@@ -1,0 +1,13 @@
+fastapi
+uvicorn[standard]
+python-multipart
+python-dotenv
+sqlmodel
+aiosqlite
+sherpa-onnx
+faster-whisper
+ctranslate2
+websockets
+numpy
+soundfile
+librosa
