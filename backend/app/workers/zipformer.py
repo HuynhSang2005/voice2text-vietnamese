@@ -27,9 +27,9 @@ class ZipformerWorker(BaseWorker):
         print(f"  - tokens: {tokens}")
 
         try:
-            # Use the simpler online_recognizer module interface
-            print("[ZipformerWorker] Creating recognizer using online_recognizer module...")
-            recognizer = sherpa_onnx.online_recognizer.OnlineRecognizer.from_transducer(
+            # Use the official API from sherpa-onnx examples
+            print("[ZipformerWorker] Creating recognizer using OnlineRecognizer.from_transducer...")
+            recognizer = sherpa_onnx.OnlineRecognizer.from_transducer(
                 tokens=tokens,
                 encoder=encoder,
                 decoder=decoder,
@@ -37,10 +37,8 @@ class ZipformerWorker(BaseWorker):
                 num_threads=2,
                 sample_rate=16000,
                 feature_dim=80,
-                enable_endpoint=True,
-                rule1_min_trailing_silence=2.4,
-                rule2_min_trailing_silence=1.2,
-                rule3_min_utterance_length=300,
+                decoding_method="greedy_search",
+                provider="cpu",
             )
             
             print("[ZipformerWorker] OnlineRecognizer created successfully")
