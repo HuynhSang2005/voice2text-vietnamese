@@ -1,15 +1,8 @@
 import { createFileRoute } from '@tanstack/react-router'
-
+import Dashboard from '@/features/dashboard/Dashboard'
 
 export const Route = createFileRoute('/')({
-  component: App,
+  component: Dashboard,
 })
 
-function App() {
-  return (
-    <div className="p-4">
-      <h1 className="text-2xl font-bold">Voice2Text Dashboard</h1>
-    </div>
-  )
-}
 
