@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --port 5173",
+    "gen:api": "openapi-ts",
     "build": "vite build && tsc",
     "serve": "vite preview",
     "test": "vitest run",
@@ -12,6 +13,7 @@
     "check": "prettier --write . && eslint --fix"
   },
   "dependencies": {
+    "@hey-api/client-fetch": "^0.13.1",
     "@tailwindcss/vite": "^4.0.6",
     "@tanstack/react-devtools": "^0.7.0",
     "@tanstack/react-query": "^5.90.10",
