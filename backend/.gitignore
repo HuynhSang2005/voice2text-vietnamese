@@ -4,4 +4,4 @@ venv/
 env
 models_storage
 .env
-*.db
+*.db*

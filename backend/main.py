@@ -1,10 +1,33 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
+from fastapi.routing import APIRoute
 from app.core.config import settings
 from app.core.database import create_db_and_tables
+from app.core.manager import manager
 
-app = FastAPI(title=settings.PROJECT_NAME)
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    await create_db_and_tables()
+    yield
+    # Shutdown
+    manager.stop_current_model()
+
+from fastapi.exceptions import RequestValidationError
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from app.core.errors import http_exception_handler, validation_exception_handler, general_exception_handler
+
+app = FastAPI(
+    title=settings.PROJECT_NAME,
+    lifespan=lifespan,
+)
+
+app.add_exception_handler(StarletteHTTPException, http_exception_handler)
+app.add_exception_handler(RequestValidationError, validation_exception_handler)
+app.add_exception_handler(Exception, general_exception_handler)
+
 
 # CORS Configuration
 app.add_middleware(
@@ -15,10 +38,22 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Custom Operation ID Generator
+def simplify_operation_ids(app: FastAPI):
+    for route in app.routes:
+        if isinstance(route, APIRoute):
+            # Use the function name as the operation ID
+            # e.g., get_models -> get_models
+            route.operation_id = route.name
+
 # Custom OpenAPI Schema
 def custom_openapi():
     if app.openapi_schema:
         return app.openapi_schema
+    
+    # Simplify operation IDs before generating schema
+    simplify_operation_ids(app)
+    
     openapi_schema = get_openapi(
         title=settings.PROJECT_NAME,
         version="1.0.0",
@@ -31,10 +66,6 @@ def custom_openapi():
     return app.openapi_schema
 
 app.openapi = custom_openapi
-
-@app.on_event("startup")
-def on_startup():
-    create_db_and_tables()
 
 @app.get("/")
 def root():
