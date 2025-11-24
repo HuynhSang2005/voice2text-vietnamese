@@ -66,7 +66,10 @@ export const useTranscribe = () => {
 
   const sendAudio = useCallback((audioData: Int16Array) => {
     if (readyState === ReadyState.OPEN) {
+      // console.log(`[useTranscribe] Sending ${audioData.byteLength} bytes`)
       sendMessage(audioData)
+    } else {
+        console.warn('[useTranscribe] WebSocket not OPEN. Dropping audio.')
     }
   }, [readyState, sendMessage])
 

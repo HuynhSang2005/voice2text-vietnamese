@@ -1,52 +1,46 @@
-
-import { useQuery } from '@tanstack/react-query'
-import { Mic, MicOff, Activity, Clock, Wifi, WifiOff } from 'lucide-react'
-
-import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { ScrollArea } from '@/components/ui/scroll-area'
+import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Skeleton } from '@/components/ui/skeleton'
-
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { Mic, MicOff, Activity, Clock, Wifi, WifiOff } from 'lucide-react'
 import { useAppStore } from '@/store/useAppStore'
-import { useAudioRecorder } from '@/hooks/useAudioRecorder'
 import { useTranscribe } from '@/hooks/useTranscribe'
+import { useAudioRecorder } from '@/hooks/useAudioRecorder'
+import { useMicrophoneDevices } from '@/hooks/useMicrophoneDevices'
+import { useQuery } from '@tanstack/react-query'
 import { getModelsOptions } from '@/client/@tanstack/react-query.gen'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 
 export default function Dashboard() {
-  const { 
-    isConnected, 
-    isRecording, 
-    currentModel, 
-    partialText, 
-    finalText, 
+  const {
+    isConnected,
+    isRecording,
+    currentModel,
+    partialText,
+    finalText,
     latency,
-    setModel,
     setRecording,
+    setModel,
     clearTranscript
   } = useAppStore()
 
   const { sendAudio } = useTranscribe()
-  const { startRecording, stopRecording } = useAudioRecorder({ 
-    onAudioData: sendAudio 
+  const { devices, selectedDeviceId, setSelectedDeviceId, hasPermission } = useMicrophoneDevices()
+  const { startRecording, stopRecording, volume } = useAudioRecorder({ 
+    onAudioData: sendAudio,
+    deviceId: selectedDeviceId
   })
 
   // Fetch available models
   const { data: models, isLoading: isLoadingModels } = useQuery({
     ...getModelsOptions()
   })
-
-  const handleToggleRecording = async () => {
-    if (isRecording) {
-      stopRecording()
-      setRecording(false)
-    } else {
-      clearTranscript()
-      await startRecording()
-      setRecording(true)
-    }
-  }
 
   const handleModelChange = (value: string) => {
     setModel(value)
@@ -57,29 +51,6 @@ export default function Dashboard() {
       {/* Header Controls */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <Select value={currentModel} onValueChange={handleModelChange} disabled={isRecording}>
-            <SelectTrigger className="w-[280px]">
-              <SelectValue placeholder="Select Model" />
-            </SelectTrigger>
-            <SelectContent>
-              {isLoadingModels ? (
-                <div className="p-2 space-y-2">
-                  <Skeleton className="h-8 w-full" />
-                  <Skeleton className="h-8 w-full" />
-                </div>
-              ) : (
-                models?.map((model) => (
-                  <SelectItem key={model.id} value={model.id}>
-                    <div className="flex flex-col items-start">
-                      <span className="font-medium">{model.name}</span>
-                      <span className="text-xs text-muted-foreground">{model.description}</span>
-                    </div>
-                  </SelectItem>
-                ))
-              )}
-            </SelectContent>
-          </Select>
-
           <Badge variant={isConnected ? "default" : "destructive"} className="gap-1">
             {isConnected ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
             {isConnected ? "Connected" : "Disconnected"}
@@ -94,6 +65,67 @@ export default function Dashboard() {
              </Badge>
            )}
         </div>
+      </div>
+
+      {/* Model Selection & Microphone Selection */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm">Model</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Select value={currentModel} onValueChange={handleModelChange} disabled={isRecording}>
+              {isLoadingModels ? (
+                <SelectTrigger>
+                  <SelectValue placeholder="Loading..." />
+                </SelectTrigger>
+              ) : (
+                <>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {models?.map((model) => (
+                      <SelectItem key={model.id} value={model.id}>
+                        {model.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </>
+              )}
+            </Select>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm">Microphone</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {!hasPermission ? (
+              <div className="text-sm text-muted-foreground">
+                Permission required
+              </div>
+            ) : (
+              <Select 
+                value={selectedDeviceId} 
+                onValueChange={setSelectedDeviceId}
+                disabled={isRecording}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select microphone" />
+                </SelectTrigger>
+                <SelectContent>
+                  {devices.map((device) => (
+                    <SelectItem key={device.deviceId} value={device.deviceId}>
+                      {device.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
       {/* Main Transcript Area */}
@@ -124,20 +156,53 @@ export default function Dashboard() {
       </Card>
 
       {/* Bottom Controls */}
-      <div className="flex justify-center pb-4">
-        <Button
-          size="lg"
-          variant={isRecording ? "destructive" : "default"}
-          className="h-16 w-16 rounded-full shadow-xl transition-all hover:scale-105"
-          onClick={handleToggleRecording}
-          disabled={!isConnected}
-        >
-          {isRecording ? (
-            <MicOff className="w-8 h-8" />
-          ) : (
-            <Mic className="w-8 h-8" />
-          )}
-        </Button>
+      <div className="flex flex-col items-center gap-4 pb-4">
+        {/* Visualizer */}
+        <div className="h-8 flex items-end gap-1">
+            {isRecording && (
+                <>
+                    <div className="w-2 bg-primary rounded-t transition-all duration-75" style={{ height: `${Math.max(10, volume * 0.5)}%` }}></div>
+                    <div className="w-2 bg-primary rounded-t transition-all duration-75" style={{ height: `${Math.max(10, volume * 0.8)}%` }}></div>
+                    <div className="w-2 bg-primary rounded-t transition-all duration-75" style={{ height: `${Math.max(10, volume)}%` }}></div>
+                    <div className="w-2 bg-primary rounded-t transition-all duration-75" style={{ height: `${Math.max(10, volume * 0.8)}%` }}></div>
+                    <div className="w-2 bg-primary rounded-t transition-all duration-75" style={{ height: `${Math.max(10, volume * 0.5)}%` }}></div>
+                </>
+            )}
+        </div>
+
+        <div className="flex items-center gap-4">
+            {!isRecording ? (
+                <Button
+                    size="lg"
+                    className="h-16 w-16 rounded-full shadow-xl bg-green-600 hover:bg-green-700 transition-all hover:scale-105"
+                    onClick={async () => {
+                        console.log("Start button clicked")
+                        clearTranscript()
+                        await startRecording()
+                        setRecording(true)
+                    }}
+                    disabled={!isConnected}
+                >
+                    <Mic className="w-8 h-8" />
+                </Button>
+            ) : (
+                <Button
+                    size="lg"
+                    variant="destructive"
+                    className="h-16 w-16 rounded-full shadow-xl transition-all hover:scale-105"
+                    onClick={() => {
+                        console.log("Stop button clicked")
+                        stopRecording()
+                        setRecording(false)
+                    }}
+                >
+                    <MicOff className="w-8 h-8" />
+                </Button>
+            )}
+        </div>
+        <div className="text-sm text-muted-foreground h-4">
+            {isRecording ? "Listening..." : "Click mic to start"}
+        </div>
       </div>
     </div>
   )
