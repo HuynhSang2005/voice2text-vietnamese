@@ -1,10 +1,11 @@
 import os
 import numpy as np
-from faster_whisper import WhisperModel
 from app.workers.base import BaseWorker
 
 class WhisperWorker(BaseWorker):
     def load_model(self):
+        from faster_whisper import WhisperModel
+        
         # model_path passed in __init__ is the model name from manager
         # e.g., "faster-whisper" or "phowhisper"
         

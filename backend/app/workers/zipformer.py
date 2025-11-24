@@ -1,41 +1,60 @@
 import os
-import sherpa_onnx
 import numpy as np
+
 from app.workers.base import BaseWorker
 
 class ZipformerWorker(BaseWorker):
     def load_model(self):
+        import sherpa_onnx
+        
         # Define paths relative to models_storage/zipformer
-        # Assuming the user has downloaded the model files to this directory
         model_dir = os.path.join("models_storage", "zipformer")
         tokens = os.path.join(model_dir, "tokens.txt")
         encoder = os.path.join(model_dir, "encoder-epoch-12-avg-8.onnx")
         decoder = os.path.join(model_dir, "decoder-epoch-12-avg-8.onnx")
         joiner = os.path.join(model_dir, "joiner-epoch-12-avg-8.onnx")
 
-        # Check if files exist, if not, maybe use default or error out
+        # Check if files exist
         if not os.path.exists(encoder):
-            print(f"Warning: Zipformer model not found at {model_dir}. Please download it.")
-            # For now, we can't proceed without model files.
-            # But to avoid crashing the worker loop immediately if files are missing during dev:
+            print(f"Error: Zipformer encoder not found at {encoder}")
             self.recognizer = None
-            return
+            raise FileNotFoundError(f"Model files not found in {model_dir}")
 
-        config = sherpa_onnx.OnlineRecognizerConfig(
-            model_config=sherpa_onnx.OnlineModelConfig(
-                transducer=sherpa_onnx.OnlineTransducerModelConfig(
-                    encoder=encoder,
-                    decoder=decoder,
-                    joiner=joiner,
-                ),
+        print(f"Loading model from {model_dir}...")
+        print(f"  - encoder: {encoder}")
+        print(f"  - decoder: {decoder}")
+        print(f"  - joiner: {joiner}")
+        print(f"  - tokens: {tokens}")
+
+        try:
+            # Use the simpler online_recognizer module interface
+            print("[ZipformerWorker] Creating recognizer using online_recognizer module...")
+            recognizer = sherpa_onnx.online_recognizer.OnlineRecognizer.from_transducer(
                 tokens=tokens,
-                num_threads=1,
-            ),
-            feature_config=sherpa_onnx.FeatureConfig(sample_rate=16000),
-        )
-        self.recognizer = sherpa_onnx.OnlineRecognizer(config)
-        self.stream = self.recognizer.create_stream()
-        print("Zipformer model loaded successfully.")
+                encoder=encoder,
+                decoder=decoder,
+                joiner=joiner,
+                num_threads=2,
+                sample_rate=16000,
+                feature_dim=80,
+                enable_endpoint=True,
+                rule1_min_trailing_silence=2.4,
+                rule2_min_trailing_silence=1.2,
+                rule3_min_utterance_length=300,
+            )
+            
+            print("[ZipformerWorker] OnlineRecognizer created successfully")
+            self.recognizer = recognizer
+            self.stream = recognizer.create_stream()
+            print("[ZipformerWorker] Stream created successfully")
+            print("Zipformer model loaded successfully.")
+            
+        except Exception as e:
+            print(f"Fatal: Failed to load Zipformer model: {e}")
+            import traceback
+            traceback.print_exc()
+            self.recognizer = None
+            raise
 
     def process(self, item):
         if not self.recognizer:
@@ -57,6 +76,8 @@ class ZipformerWorker(BaseWorker):
             samples = np.frombuffer(audio_data, dtype=np.int16)
             samples = samples.astype(np.float32) / 32768.0
             
+            print(f"[ZipformerWorker] Processing {len(samples)} samples ({len(audio_data)} bytes)")
+            
             self.stream.accept_waveform(16000, samples)
             
             while self.recognizer.is_ready(self.stream):
@@ -75,11 +96,15 @@ class ZipformerWorker(BaseWorker):
             
             is_endpoint = self.recognizer.is_endpoint(self.stream)
             
-            self.output_queue.put({
+            result = {
                 "text": text,
                 "is_final": is_endpoint,
                 "model": "zipformer"
-            })
+            }
+            
+            print(f"[ZipformerWorker] Putting result in queue: text='{text}', is_final={is_endpoint}")
+            
+            self.output_queue.put(result)
             
             if is_endpoint:
                 self.recognizer.reset(self.stream)
