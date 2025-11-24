@@ -1,0 +1,77 @@
+import useWebSocket, { ReadyState } from 'react-use-websocket'
+import { useAppStore } from '@/store/useAppStore'
+import { useEffect, useCallback } from 'react'
+
+export const useTranscribe = () => {
+  const {
+    currentModel,
+    setConnected,
+    setPartialText,
+    addFinalText,
+    setLatency
+  } = useAppStore()
+
+  // Hardcoded for now, but should be env var in production
+  const WS_URL = 'ws://localhost:8000/ws/transcribe'
+
+  const { sendMessage, lastMessage, readyState } = useWebSocket(WS_URL, {
+    onOpen: () => {
+      console.log('WebSocket Connected')
+      setConnected(true)
+      // Send config immediately on connect
+      sendMessage(JSON.stringify({ type: 'config', model: currentModel }))
+    },
+    onClose: () => {
+      console.log('WebSocket Disconnected')
+      setConnected(false)
+    },
+    onError: (event) => {
+      console.error('WebSocket Error', event)
+      setConnected(false)
+    },
+    shouldReconnect: () => true, // Auto-reconnect
+    reconnectInterval: 3000,
+  })
+
+  // Handle incoming messages
+  useEffect(() => {
+    if (lastMessage !== null) {
+      try {
+        const data = JSON.parse(lastMessage.data)
+        // Expected format: { text: string, is_final: boolean, latency?: number }
+        
+        if (data.is_final) {
+          addFinalText(data.text)
+          setPartialText('')
+        } else {
+          setPartialText(data.text)
+        }
+        
+        if (data.latency) {
+            setLatency(data.latency)
+        }
+      } catch (e) {
+        console.error("Failed to parse WS message", e)
+      }
+    }
+  }, [lastMessage, setPartialText, addFinalText, setLatency])
+
+  // Handle model change - re-send config if connected
+  useEffect(() => {
+      if (readyState === ReadyState.OPEN) {
+           console.log(`Switching model to: ${currentModel}`)
+           sendMessage(JSON.stringify({ type: 'config', model: currentModel }))
+      }
+  }, [currentModel, readyState, sendMessage])
+
+  const sendAudio = useCallback((audioData: Int16Array) => {
+    if (readyState === ReadyState.OPEN) {
+      sendMessage(audioData)
+    }
+  }, [readyState, sendMessage])
+
+  return {
+    readyState,
+    sendAudio
+  }
+}
