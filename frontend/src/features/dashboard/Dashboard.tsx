@@ -30,7 +30,7 @@ export default function Dashboard() {
     clearTranscript
   } = useAppStore()
 
-  const { sendAudio } = useTranscribe()
+  const { sendAudio, startSession } = useTranscribe()
   const { devices, selectedDeviceId, setSelectedDeviceId, hasPermission } = useMicrophoneDevices()
   const { startRecording, stopRecording, volume } = useAudioRecorder({ 
     onAudioData: sendAudio,
@@ -177,7 +177,15 @@ export default function Dashboard() {
                     className="h-16 w-16 rounded-full shadow-xl bg-green-600 hover:bg-green-700 transition-all hover:scale-105"
                     onClick={async () => {
                         console.log("Start button clicked")
+                        // Generate new session ID
+                        const sessionId = crypto.randomUUID()
+                        
+                        // Signal backend to start new session
+                        startSession(sessionId)
+                        
+                        // Clear UI
                         clearTranscript()
+                        
                         await startRecording()
                         setRecording(true)
                     }}

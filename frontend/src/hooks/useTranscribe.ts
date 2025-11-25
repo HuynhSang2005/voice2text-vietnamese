@@ -73,8 +73,18 @@ export const useTranscribe = () => {
     }
   }, [readyState, sendMessage])
 
+  const startSession = useCallback((sessionId: string) => {
+      if (readyState === ReadyState.OPEN) {
+          console.log(`[useTranscribe] Starting session: ${sessionId}`)
+          sendMessage(JSON.stringify({ type: 'start_session', sessionId }))
+          // Clear partial text on new session
+          setPartialText('')
+      }
+  }, [readyState, sendMessage, setPartialText])
+
   return {
     readyState,
-    sendAudio
+    sendAudio,
+    startSession
   }
 }
