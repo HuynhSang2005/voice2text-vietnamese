@@ -7,7 +7,7 @@ import urllib.request
 import zipfile
 import sys
 
-MODEL_URL = "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-vietnamese-2023-09-26.tar.bz2"
+MODEL_URL = "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-zipformer-vi-int8-2025-04-20.tar.bz2"
 MODEL_DIR = "models_storage/zipformer"
 
 def download_model():
@@ -17,7 +17,7 @@ def download_model():
     os.makedirs(MODEL_DIR, exist_ok=True)
     
     # Download file
-    filename = "zipformer-vietnamese.tar.bz2"
+    filename = "zipformer-vietnamese-int8.tar.bz2"
     filepath = os.path.join(MODEL_DIR, filename)
     
     print(f"Downloading Zipformer Vietnamese model from {MODEL_URL}...")

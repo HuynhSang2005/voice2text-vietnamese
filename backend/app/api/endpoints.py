@@ -33,7 +33,8 @@ async def websocket_endpoint(websocket: WebSocket, session: AsyncSession = Depen
     await websocket.accept()
     
     model_name = "zipformer" # Default
-    session_id = str(id(websocket)) # Simple session ID
+    # Initial session ID (connection-based)
+    session_id = str(id(websocket)) 
     
     try:
         # 1. Wait for config message (Optional, or first message)
@@ -64,6 +65,7 @@ async def websocket_endpoint(websocket: WebSocket, session: AsyncSession = Depen
              input_q.put(first_msg["bytes"])
 
         async def receive_audio():
+            nonlocal session_id # Allow updating session_id from inner scope
             try:
                 audio_packet_count = 0
                 while True:
@@ -80,15 +82,27 @@ async def websocket_endpoint(websocket: WebSocket, session: AsyncSession = Depen
                             print(f"[WebSocket] Received audio packet #{audio_packet_count}, size: {len(audio_data)} bytes")
                         input_q.put(audio_data)
                     elif "text" in message:
-                        # Optional: Handle config update mid-stream
                         try:
-                            config = json.loads(message["text"])
-                            if config.get("type") == "config":
-                                new_model = config.get("model")
+                            data = json.loads(message["text"])
+                            msg_type = data.get("type")
+                            
+                            if msg_type == "config":
+                                new_model = data.get("model")
                                 if new_model and new_model != model_name:
                                     print(f"Switching model to {new_model} (not implemented yet)")
-                                    # TODO: Implement dynamic switching
-                        except:
+                                    
+                            elif msg_type == "start_session":
+                                # Client starting a new recording session
+                                new_session_id = data.get("sessionId")
+                                if new_session_id:
+                                    session_id = new_session_id
+                                    print(f"[WebSocket] Starting new session: {session_id}")
+                                    
+                                    # Signal worker to reset context
+                                    input_q.put({"reset": True})
+                                    
+                        except Exception as e:
+                            print(f"Error parsing text message: {e}")
                             pass
             except WebSocketDisconnect:
                 print("Client disconnected (receive)")
@@ -112,20 +126,43 @@ async def websocket_endpoint(websocket: WebSocket, session: AsyncSession = Depen
                             result = output_q.get_nowait()
                             result_count += 1
                             
-                            print(f"[WebSocket] Sending result #{result_count}: text='{result.get('text', '')}', is_final={result.get('is_final')}")
+                            # print(f"[WebSocket] Sending result #{result_count}: text='{result.get('text', '')}', is_final={result.get('is_final')}")
                             
                             # Send to client
                             await websocket.send_json(result)
                             
-                            # Save to DB if final
-                            if result.get("is_final"):
-                                db_log = TranscriptionLog(
-                                    session_id=session_id,
-                                    model_id=model_name,
-                                    content=result.get("text", ""),
-                                    latency_ms=0.0, # TODO: Calculate latency
-                                )
-                                session.add(db_log)
+                            # Save to DB if final OR if we want to save partials? 
+                            # Usually we save final. 
+                            # But since we are using OfflineRecognizer in buffered mode, we might want to save 
+                            # the "final" result of the session when the session ends?
+                            # OR, we can just save whatever we have as a log entry.
+                            # For now, let's save if text is not empty (updates the log)
+                            
+                            text_content = result.get("text", "").strip()
+                            if text_content:
+                                # We want to UPSERT or INSERT?
+                                # If we want one log per session, we should update the existing entry for this session_id?
+                                # OR just insert a new log for every update? Inserting every update is too much.
+                                # Let's insert only if it's "final" (which we don't have yet from worker)
+                                # OR, let's assume the client will send a "stop_session" to mark finality?
+                                # For simplicity requested by user: "mỗi lần mở mic... là 1 session"
+                                # We can log the latest text for this session_id.
+                                
+                                # Check if log exists for this session
+                                statement = select(TranscriptionLog).where(TranscriptionLog.session_id == session_id)
+                                existing_log = (await session.exec(statement)).first()
+                                
+                                if existing_log:
+                                    existing_log.content = text_content
+                                    session.add(existing_log)
+                                else:
+                                    db_log = TranscriptionLog(
+                                        session_id=session_id,
+                                        model_id=model_name,
+                                        content=text_content,
+                                        latency_ms=0.0,
+                                    )
+                                    session.add(db_log)
                                 await session.commit()
                                 
                         # Optimize: Yield control to event loop to prevent starvation

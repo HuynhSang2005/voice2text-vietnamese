@@ -7,12 +7,20 @@ class ZipformerWorker(BaseWorker):
     def load_model(self):
         import sherpa_onnx
         
-        # Define paths relative to models_storage/zipformer
-        model_dir = os.path.join("models_storage", "zipformer")
+        # Define paths relative to backend execution (which is usually project root or backend dir)
+        # If running from backend dir, we need to go up one level
+        # Better to use absolute path based on project root
+        
+        # Assume backend is running from d:\voice2text-vietnamese\backend
+        # models_storage is at d:\voice2text-vietnamese\models_storage
+        
+        base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../"))
+        model_dir = os.path.join(base_dir, "models_storage", "zipformer", "sherpa-onnx-zipformer-vi-int8-2025-04-20")
+        
         tokens = os.path.join(model_dir, "tokens.txt")
-        encoder = os.path.join(model_dir, "encoder-epoch-12-avg-8.onnx")
+        encoder = os.path.join(model_dir, "encoder-epoch-12-avg-8.int8.onnx")
         decoder = os.path.join(model_dir, "decoder-epoch-12-avg-8.onnx")
-        joiner = os.path.join(model_dir, "joiner-epoch-12-avg-8.onnx")
+        joiner = os.path.join(model_dir, "joiner-epoch-12-avg-8.int8.onnx")
 
         # Check if files exist
         if not os.path.exists(encoder):
@@ -27,22 +35,23 @@ class ZipformerWorker(BaseWorker):
         print(f"  - tokens: {tokens}")
 
         try:
-            # Use the official API from sherpa-onnx examples
-            print("[ZipformerWorker] Creating recognizer using OnlineRecognizer.from_transducer...")
-            recognizer = sherpa_onnx.OnlineRecognizer.from_transducer(
+            # Use OfflineRecognizer as the model is offline-only
+            print("[ZipformerWorker] Creating recognizer using OfflineRecognizer.from_transducer...")
+            recognizer = sherpa_onnx.OfflineRecognizer.from_transducer(
                 tokens=tokens,
                 encoder=encoder,
                 decoder=decoder,
                 joiner=joiner,
-                num_threads=2,
+                num_threads=1,
                 sample_rate=16000,
                 feature_dim=80,
                 decoding_method="greedy_search",
                 provider="cpu",
             )
             
-            print("[ZipformerWorker] OnlineRecognizer created successfully")
+            print("[ZipformerWorker] OfflineRecognizer created successfully")
             self.recognizer = recognizer
+            # OfflineRecognizer also has create_stream
             self.stream = recognizer.create_stream()
             print("[ZipformerWorker] Stream created successfully")
             print("Zipformer model loaded successfully.")
@@ -54,18 +63,35 @@ class ZipformerWorker(BaseWorker):
             self.recognizer = None
             raise
 
+    def format_vietnamese_text(self, text: str) -> str:
+        """
+        Convert text to Sentence case (first letter capitalized, rest lowercase).
+        Example: "XIN CHÀO" -> "Xin chào"
+        """
+        if not text:
+            return ""
+        
+        # Lowercase everything first
+        text = text.lower()
+        
+        # Capitalize first letter
+        if text:
+            text = text[0].upper() + text[1:]
+            
+        return text
+
     def process(self, item):
         if not self.recognizer:
             return
 
-        # Item is expected to be a dict: {"audio": bytes, "reset": bool}
-        # or just bytes if we assume continuous stream.
-        # Let's support a simple protocol: dict with 'audio' (bytes) and optional 'reset'
-        
         if isinstance(item, dict):
             audio_data = item.get("audio")
             if item.get("reset"):
+                print("[ZipformerWorker] Resetting stream for new session")
                 self.stream = self.recognizer.create_stream()
+                # If reset is the only instruction, return early
+                if not audio_data:
+                    return
         else:
             audio_data = item
 
@@ -74,35 +100,26 @@ class ZipformerWorker(BaseWorker):
             samples = np.frombuffer(audio_data, dtype=np.int16)
             samples = samples.astype(np.float32) / 32768.0
             
-            print(f"[ZipformerWorker] Processing {len(samples)} samples ({len(audio_data)} bytes)")
+            # print(f"[ZipformerWorker] Processing {len(samples)} samples ({len(audio_data)} bytes)")
             
             self.stream.accept_waveform(16000, samples)
             
-            while self.recognizer.is_ready(self.stream):
-                self.recognizer.decode_stream(self.stream)
+            self.recognizer.decode_stream(self.stream)
             
-            text = self.stream.result.text
+            raw_text = self.stream.result.text
+            formatted_text = self.format_vietnamese_text(raw_text)
             
-            # Send result back
-            # Zipformer is streaming, so we send partial results?
-            # Sherpa-onnx result.text is the full text so far.
-            # We might want to send only if changed?
-            # For simplicity, send it. Frontend handles diff? 
-            # Actually, frontend expects "is_final". 
-            # Zipformer streaming output is usually "interim" until endpointing?
-            # Sherpa-onnx endpointing is handled by `is_endpoint`.
+            # For Offline, is_endpoint is not available or not used same way.
+            # We'll just send the current text as "interim" (is_final=False)
             
-            is_endpoint = self.recognizer.is_endpoint(self.stream)
+            is_final = False 
             
             result = {
-                "text": text,
-                "is_final": is_endpoint,
+                "text": formatted_text,
+                "is_final": is_final,
                 "model": "zipformer"
             }
             
-            print(f"[ZipformerWorker] Putting result in queue: text='{text}', is_final={is_endpoint}")
+            # print(f"[ZipformerWorker] Putting result in queue: text='{formatted_text}'")
             
             self.output_queue.put(result)
-            
-            if is_endpoint:
-                self.recognizer.reset(self.stream)
