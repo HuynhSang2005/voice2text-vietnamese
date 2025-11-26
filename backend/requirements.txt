@@ -11,3 +11,8 @@ websockets
 numpy
 soundfile
 librosa
+huggingface_hub
+sqlalchemy
+pytest
+pytest-asyncio
+pytest-mock
