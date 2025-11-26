@@ -1,0 +1,24 @@
+version: "3.8"
+
+services:
+  backend:
+    build: ./backend
+    container_name: voice2text-backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend/models_storage:/app/models_storage
+      - ./backend/database.db:/app/database.db
+    environment:
+      - PROJECT_NAME="Real-time Vietnamese STT"
+      - ALLOWED_ORIGINS=["http://localhost:5173","http://localhost"]
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    container_name: voice2text-frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
