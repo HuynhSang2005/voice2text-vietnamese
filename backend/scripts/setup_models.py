@@ -7,10 +7,16 @@ import sys
 """
 SETUP MODELS SCRIPT
 -------------------
-This script handles the downloading and preparation of AI models required for the backend.
-It is designed to be idempotent (safe to run multiple times).
+Script này tự động tải và cài đặt các model AI cần thiết cho Backend.
+Đảm bảo môi trường "Clone & Run" cho developer mới.
 
-Usage:
+Chức năng:
+1. Tải Zipformer model (Sherpa-ONNX).
+2. Generate tokens.txt từ bpe.model.
+3. Clone HKAB repo (Tham khảo).
+4. Hướng dẫn convert PhoWhisper.
+
+Sử dụng:
     python backend/scripts/setup_models.py
 """
 
@@ -30,21 +36,36 @@ HYNT_BASE_URL = f"https://huggingface.co/{HYNT_REPO_ID}/resolve/main"
 # HKAB Model details
 HKAB_REPO_URL = "https://github.com/HKAB/vietnamese-rnnt-tutorial.git"
 
+def check_system_deps():
+    """Kiểm tra các dependencies hệ thống cần thiết."""
+    print("--- Checking System Dependencies ---")
+    
+    # Check Git
+    if shutil.which("git") is None:
+        print("[WARNING] 'git' not found. HKAB cloning will fail.")
+    else:
+        print("[OK] git found.")
+        
+    # Check FFmpeg (Optional but good for audio)
+    if shutil.which("ffmpeg") is None:
+        print("[WARNING] 'ffmpeg' not found. Audio processing might fail at runtime.")
+    else:
+        print("[OK] ffmpeg found.")
+
 def download_file(url, dest_path):
     if os.path.exists(dest_path):
-        print(f"File already exists: {dest_path}")
+        print(f"[SKIP] File exists: {os.path.basename(dest_path)}")
         return
-    print(f"Downloading {url} to {dest_path}...")
+    print(f"[DOWNLOADING] {url} -> {dest_path}...")
     try:
         urllib.request.urlretrieve(url, dest_path)
-        print("Download complete.")
+        print("[DONE] Download complete.")
     except Exception as e:
-        print(f"Failed to download {url}: {e}")
-        # Don't raise, just print error so other files can try
+        print(f"[ERROR] Failed to download {url}: {e}")
         pass
 
 def generate_tokens(bpe_model_path, tokens_path):
-    print(f"Generating tokens.txt from {bpe_model_path}...")
+    print(f"[GENERATING] tokens.txt from {bpe_model_path}...")
     try:
         import sentencepiece as spm
         sp = spm.SentencePieceProcessor()
@@ -54,21 +75,22 @@ def generate_tokens(bpe_model_path, tokens_path):
             for i in range(sp.get_piece_size()):
                 piece = sp.id_to_piece(i)
                 f.write(f"{piece} {i}\n")
-        print(f"Generated {tokens_path}")
+        print(f"[DONE] Generated {tokens_path}")
     except ImportError:
-        print("Error: sentencepiece not installed. Please run 'pip install sentencepiece'")
+        print("[ERROR] 'sentencepiece' not installed. Run 'pip install sentencepiece'")
     except Exception as e:
-        print(f"Error generating tokens: {e}")
+        print(f"[ERROR] Error generating tokens: {e}")
 
 def main():
+    check_system_deps()
+    
     # Define paths
-    # Script is in backend/scripts/
     base_dir = os.path.dirname(os.path.abspath(__file__))
     # Models are in backend/models_storage (one level up from scripts)
     models_root = os.path.join(base_dir, "..", "models_storage")
     models_root = os.path.abspath(models_root)
     
-    print(f"Models Root: {models_root}")
+    print(f"\nModels Root: {models_root}")
     
     if not os.path.exists(models_root):
         os.makedirs(models_root)
@@ -78,7 +100,7 @@ def main():
     if not os.path.exists(hynt_dir):
         os.makedirs(hynt_dir)
         
-    print(f"--- Downloading Hynt Model to {hynt_dir} ---")
+    print(f"\n--- 1. Setup Zipformer (Hynt) ---")
     for filename in HYNT_FILES:
         url = f"{HYNT_BASE_URL}/{filename}"
         dest_path = os.path.join(hynt_dir, filename)
@@ -92,23 +114,22 @@ def main():
         
     # 2. HKAB Model
     hkab_dir = os.path.join(models_root, "hkab")
-    print(f"\n--- Cloning HKAB Repo to {hkab_dir} ---")
+    print(f"\n--- 2. Setup HKAB (Git Clone) ---")
     if not os.path.exists(hkab_dir):
         try:
             subprocess.check_call(["git", "clone", HKAB_REPO_URL, hkab_dir])
-            print("HKAB repo cloned.")
+            print("[DONE] HKAB repo cloned.")
         except Exception as e:
-            print(f"Failed to clone HKAB repo: {e}")
+            print(f"[ERROR] Failed to clone HKAB repo: {e}")
     else:
-        print("HKAB repo already exists.")
+        print("[SKIP] HKAB repo already exists.")
         
-    print("\n--- PhoWhisper Setup (Optional) ---")
-    print("To use PhoWhisper (Vietnamese specific), you need to convert it manually.")
-    print("See docs/docs-models.md for details.")
-    print("Command example (requires 'transformers' and 'torch' installed):")
-    print("  ct2-transformers-converter --model vinai/PhoWhisper-small --output_dir backend/models_storage/phowhisper-ct2 --quantization int8")
+    print("\n--- 3. PhoWhisper Instructions ---")
+    print("PhoWhisper cần được convert thủ công (do yêu cầu thư viện nặng).")
+    print("Chạy lệnh sau nếu bạn muốn dùng PhoWhisper:")
+    print(f"  ct2-transformers-converter --model vinai/PhoWhisper-small --output_dir {os.path.join(models_root, 'phowhisper-ct2')} --quantization int8")
         
-    print("\nAll model preparations complete.")
+    print("\n[SUCCESS] All model preparations complete.")
 
 if __name__ == "__main__":
     main()
