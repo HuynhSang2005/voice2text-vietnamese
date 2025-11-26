@@ -17,11 +17,13 @@ class WhisperWorker(BaseWorker):
         if model_name == "phowhisper":
             # Load from local converted path
             model_dir = os.path.join("models_storage", "phowhisper-ct2")
-            if not os.path.exists(model_dir):
-                print(f"Warning: PhoWhisper model not found at {model_dir}")
-                self.model = None
-                return
-            self.model = WhisperModel(model_dir, device=device, compute_type=compute_type)
+            if os.path.exists(model_dir):
+                print(f"[WhisperWorker] Loading PhoWhisper from {model_dir}")
+                self.model = WhisperModel(model_dir, device=device, compute_type=compute_type)
+            else:
+                print(f"[WhisperWorker] Warning: PhoWhisper model not found at {model_dir}")
+                print("[WhisperWorker] Falling back to 'small' model (standard Faster-Whisper).")
+                self.model = WhisperModel("small", device=device, compute_type=compute_type)
         else:
             # Default faster-whisper (small or medium)
             # Auto download
@@ -49,41 +51,58 @@ class WhisperWorker(BaseWorker):
             # Append to buffer
             self.buffer = np.concatenate((self.buffer, samples))
             
-            # VAD and Transcription Logic
-            # Simple strategy: Transcribe every X seconds or when buffer is long enough
-            # For real-time with Whisper, we usually need a VAD to detect silence and cut.
-            # faster-whisper has built-in VAD in transcribe(), but that's for a file/complete buffer.
-            # Here we are accumulating.
+            # VAD-based buffering strategy
+            # We use a simple energy-based VAD or just time-based for now to keep it simple and fast on CPU
+            # without adding heavy dependencies like torch.hub load inside the worker.
+            # Ideally we should use Silero VAD, but let's start with a smart buffering:
+            # 1. Accumulate at least 2 seconds.
+            # 2. If > 2s, check if the last 0.5s is silent (low energy).
+            # 3. If silent, transcribe and clear buffer.
+            # 4. If buffer > 10s, force transcribe.
             
-            # Strategy:
-            # If buffer > 3 seconds, try to transcribe.
-            # If we get a result, we might want to keep the buffer or clear it?
-            # This is complex for streaming.
-            # Simplified approach for "Research Dashboard":
-            # Accumulate until silence (detected by VAD? or just simple energy?)
-            # Or just transcribe the whole buffer every time (inefficient but simple for demo).
+            # Energy calculation
+            chunk_energy = np.mean(samples**2)
+            # print(f"Energy: {chunk_energy}")
             
-            # Let's use a simple threshold: Transcribe if buffer > 1s.
-            # And we send "is_final=False".
-            # If we detect silence (e.g. using Silero VAD separately, but we don't have it imported yet),
-            # we could finalize.
+            # Threshold for silence (tunable)
+            SILENCE_THRESHOLD = 0.001 
+            MIN_DURATION = 2.0
+            MAX_DURATION = 10.0
             
-            # For now, let's just transcribe the growing buffer and send updates.
-            # To prevent infinite growth, we need a reset mechanism from client or silence detection.
-            # Let's rely on client sending "reset" or just keep growing for short phrases.
+            duration = len(self.buffer) / 16000.0
             
-            if len(self.buffer) > 16000 * 1.0: # > 1 second
+            should_transcribe = False
+            
+            if duration > MIN_DURATION:
+                # Check last 0.5s
+                last_05s = self.buffer[-8000:]
+                last_energy = np.mean(last_05s**2)
+                
+                if last_energy < SILENCE_THRESHOLD:
+                    should_transcribe = True
+                    # print("Silence detected, transcribing...")
+            
+            if duration > MAX_DURATION:
+                should_transcribe = True
+                # print("Max duration reached, transcribing...")
+                
+            if should_transcribe:
+                # Transcribe
                 segments, info = self.model.transcribe(
                     self.buffer, 
                     language="vi", 
                     beam_size=1, 
-                    vad_filter=True
+                    vad_filter=True # Use internal VAD to filter out non-speech within the chunk
                 )
                 
                 text = " ".join([s.text for s in segments]).strip()
                 
-                self.output_queue.put({
-                    "text": text,
-                    "is_final": False, # Whisper is block-based, so it's always "interim" until we decide to cut.
-                    "model": self.model_path
-                })
+                if text:
+                    self.output_queue.put({
+                        "text": text,
+                        "is_final": True, # We consider this a "final" segment
+                        "model": self.model_path
+                    })
+                
+                # Reset buffer
+                self.buffer = np.array([], dtype=np.float32)

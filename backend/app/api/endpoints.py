@@ -17,9 +17,10 @@ router = APIRouter()
 async def get_models():
     """List available speech-to-text models."""
     return [
-        ModelInfo(id="zipformer", name="Zipformer (Streaming)", description="Low latency, optimized for streaming"),
+        ModelInfo(id="zipformer", name="Zipformer (Offline)", description="High accuracy, offline processing"),
         ModelInfo(id="faster-whisper", name="Faster Whisper (Buffered)", description="High accuracy, buffered processing"),
         ModelInfo(id="phowhisper", name="PhoWhisper (Buffered)", description="Vietnamese optimized Whisper"),
+        ModelInfo(id="hkab", name="HKAB (Streaming)", description="Experimental Streaming RNN-T"),
     ]
 
 @router.get("/api/v1/history", response_model=List[TranscriptionLog])
@@ -65,7 +66,7 @@ async def websocket_endpoint(websocket: WebSocket, session: AsyncSession = Depen
              input_q.put(first_msg["bytes"])
 
         async def receive_audio():
-            nonlocal session_id # Allow updating session_id from inner scope
+            nonlocal session_id, model_name, input_q, output_q # Allow updating from inner scope
             try:
                 audio_packet_count = 0
                 while True:
@@ -89,7 +90,12 @@ async def websocket_endpoint(websocket: WebSocket, session: AsyncSession = Depen
                             if msg_type == "config":
                                 new_model = data.get("model")
                                 if new_model and new_model != model_name:
-                                    print(f"Switching model to {new_model} (not implemented yet)")
+                                    print(f"Switching model to {new_model}")
+                                    model_name = new_model
+                                    
+                                    # Switch model in manager
+                                    manager.start_model(model_name)
+                                    input_q, output_q = manager.get_queues(model_name)
                                     
                             elif msg_type == "start_session":
                                 # Client starting a new recording session

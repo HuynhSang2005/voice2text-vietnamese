@@ -11,16 +11,15 @@ class ZipformerWorker(BaseWorker):
         # If running from backend dir, we need to go up one level
         # Better to use absolute path based on project root
         
-        # Assume backend is running from d:\voice2text-vietnamese\backend
-        # models_storage is at d:\voice2text-vietnamese\models_storage
+        # models_storage is at d:\voice2text-vietnamese\backend\models_storage
         
-        base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../"))
-        model_dir = os.path.join(base_dir, "models_storage", "zipformer", "sherpa-onnx-zipformer-vi-int8-2025-04-20")
+        base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"))
+        model_dir = os.path.join(base_dir, "models_storage", "zipformer", "hynt-zipformer-30M-6000h")
         
         tokens = os.path.join(model_dir, "tokens.txt")
-        encoder = os.path.join(model_dir, "encoder-epoch-12-avg-8.int8.onnx")
-        decoder = os.path.join(model_dir, "decoder-epoch-12-avg-8.onnx")
-        joiner = os.path.join(model_dir, "joiner-epoch-12-avg-8.int8.onnx")
+        encoder = os.path.join(model_dir, "encoder-epoch-20-avg-10.int8.onnx")
+        decoder = os.path.join(model_dir, "decoder-epoch-20-avg-10.int8.onnx")
+        joiner = os.path.join(model_dir, "joiner-epoch-20-avg-10.int8.onnx")
 
         # Check if files exist
         if not os.path.exists(encoder):

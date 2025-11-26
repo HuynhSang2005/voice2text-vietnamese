@@ -75,6 +75,9 @@ class ModelManager:
         elif model_name in ["faster-whisper", "phowhisper"]:
             from app.workers.whisper import WhisperWorker
             return WhisperWorker
+        elif model_name == "hkab":
+            from app.workers.hkab import HKABWorker
+            return HKABWorker
         return None
 
 manager = ModelManager()
