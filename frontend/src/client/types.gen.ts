@@ -115,9 +115,51 @@ export type GetModelsResponse = GetModelsResponses[keyof GetModelsResponses];
 export type GetHistoryData = {
     body?: never;
     path?: never;
-    query?: never;
+    query?: {
+        /**
+         * Page
+         */
+        page?: number;
+        /**
+         * Limit
+         */
+        limit?: number;
+        /**
+         * Search
+         */
+        search?: string;
+        /**
+         * Model
+         */
+        model?: string;
+        /**
+         * Min Latency
+         */
+        min_latency?: number;
+        /**
+         * Max Latency
+         */
+        max_latency?: number;
+        /**
+         * Start Date
+         */
+        start_date?: string;
+        /**
+         * End Date
+         */
+        end_date?: string;
+    };
     url: '/api/v1/history';
 };
+
+export type GetHistoryErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetHistoryError = GetHistoryErrors[keyof GetHistoryErrors];
 
 export type GetHistoryResponses = {
     /**

@@ -2,7 +2,7 @@
 
 import type { Client, Options as Options2, TDataShape } from './client';
 import { client } from './client.gen';
-import type { GetHistoryData, GetHistoryResponses, GetModelsData, GetModelsResponses, GetModelStatusData, GetModelStatusResponses, RootData, RootResponses, SwitchModelData, SwitchModelErrors, SwitchModelResponses } from './types.gen';
+import type { GetHistoryData, GetHistoryErrors, GetHistoryResponses, GetModelsData, GetModelsResponses, GetModelStatusData, GetModelStatusResponses, RootData, RootResponses, SwitchModelData, SwitchModelErrors, SwitchModelResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean> = Options2<TData, ThrowOnError> & {
     /**
@@ -33,9 +33,9 @@ export const getModels = <ThrowOnError extends boolean = false>(options?: Option
 /**
  * Get History
  *
- * Get transcription history.
+ * Get transcription history with filtering and pagination.
  */
-export const getHistory = <ThrowOnError extends boolean = false>(options?: Options<GetHistoryData, ThrowOnError>) => (options?.client ?? client).get<GetHistoryResponses, unknown, ThrowOnError>({ url: '/api/v1/history', ...options });
+export const getHistory = <ThrowOnError extends boolean = false>(options?: Options<GetHistoryData, ThrowOnError>) => (options?.client ?? client).get<GetHistoryResponses, GetHistoryErrors, ThrowOnError>({ url: '/api/v1/history', ...options });
 
 /**
  * Switch Model

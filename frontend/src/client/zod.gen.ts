@@ -64,7 +64,16 @@ export const zGetModelsResponse = z.array(zModelInfo);
 export const zGetHistoryData = z.object({
     body: z.optional(z.never()),
     path: z.optional(z.never()),
-    query: z.optional(z.never())
+    query: z.optional(z.object({
+        page: z.optional(z.int()).default(1),
+        limit: z.optional(z.int()).default(50),
+        search: z.optional(z.string()),
+        model: z.optional(z.string()),
+        min_latency: z.optional(z.number()),
+        max_latency: z.optional(z.number()),
+        start_date: z.optional(z.iso.datetime()),
+        end_date: z.optional(z.iso.datetime())
+    }))
 });
 
 /**
