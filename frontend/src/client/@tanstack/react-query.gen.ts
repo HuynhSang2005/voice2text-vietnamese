@@ -3,8 +3,8 @@
 import { type DefaultError, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { getHistory, getModels, type Options, root, switchModel } from '../sdk.gen';
-import type { GetHistoryData, GetHistoryResponse, GetModelsData, GetModelsResponse, RootData, SwitchModelData, SwitchModelError } from '../types.gen';
+import { getHistory, getModels, getModelStatus, type Options, root, switchModel } from '../sdk.gen';
+import type { GetHistoryData, GetHistoryResponse, GetModelsData, GetModelsResponse, GetModelStatusData, RootData, SwitchModelData, SwitchModelError } from '../types.gen';
 
 export type QueryKey<TOptions extends Options> = [
     Pick<TOptions, 'baseUrl' | 'body' | 'headers' | 'path' | 'query'> & {
@@ -115,3 +115,23 @@ export const switchModelMutation = (options?: Partial<Options<SwitchModelData>>)
     };
     return mutationOptions;
 };
+
+export const getModelStatusQueryKey = (options?: Options<GetModelStatusData>) => createQueryKey('getModelStatus', options);
+
+/**
+ * Get Model Status
+ *
+ * Get the status of the currently loaded model.
+ */
+export const getModelStatusOptions = (options?: Options<GetModelStatusData>) => queryOptions<unknown, DefaultError, unknown, ReturnType<typeof getModelStatusQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await getModelStatus({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: getModelStatusQueryKey(options)
+});

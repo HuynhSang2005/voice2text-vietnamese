@@ -2,7 +2,7 @@
 
 import type { Client, Options as Options2, TDataShape } from './client';
 import { client } from './client.gen';
-import type { GetHistoryData, GetHistoryResponses, GetModelsData, GetModelsResponses, RootData, RootResponses, SwitchModelData, SwitchModelErrors, SwitchModelResponses } from './types.gen';
+import type { GetHistoryData, GetHistoryResponses, GetModelsData, GetModelsResponses, GetModelStatusData, GetModelStatusResponses, RootData, RootResponses, SwitchModelData, SwitchModelErrors, SwitchModelResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean> = Options2<TData, ThrowOnError> & {
     /**
@@ -43,3 +43,10 @@ export const getHistory = <ThrowOnError extends boolean = false>(options?: Optio
  * Manually switch model via REST (optional, mostly for testing).
  */
 export const switchModel = <ThrowOnError extends boolean = false>(options: Options<SwitchModelData, ThrowOnError>) => (options.client ?? client).post<SwitchModelResponses, SwitchModelErrors, ThrowOnError>({ url: '/models/switch', ...options });
+
+/**
+ * Get Model Status
+ *
+ * Get the status of the currently loaded model.
+ */
+export const getModelStatus = <ThrowOnError extends boolean = false>(options?: Options<GetModelStatusData, ThrowOnError>) => (options?.client ?? client).get<GetModelStatusResponses, unknown, ThrowOnError>({ url: '/api/v1/models/status', ...options });

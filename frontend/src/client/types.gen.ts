@@ -165,3 +165,17 @@ export type SwitchModelResponses = {
      */
     200: unknown;
 };
+
+export type GetModelStatusData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/models/status';
+};
+
+export type GetModelStatusResponses = {
+    /**
+     * Successful Response
+     */
+    200: unknown;
+};

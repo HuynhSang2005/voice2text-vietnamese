@@ -81,3 +81,9 @@ export const zSwitchModelData = z.object({
         model: z.string()
     })
 });
+
+export const zGetModelStatusData = z.object({
+    body: z.optional(z.never()),
+    path: z.optional(z.never()),
+    query: z.optional(z.never())
+});
