@@ -245,12 +245,15 @@ export function useAudioRecorder(options: UseAudioRecorderOptions): UseAudioReco
     }
   }, [])
 
-  // Cleanup on unmount
+  // Cleanup on unmount - use ref to avoid dependency on cleanup function
+  const cleanupRef = useRef(cleanup)
+  cleanupRef.current = cleanup
+  
   useEffect(() => {
     return () => {
-      cleanup()
+      cleanupRef.current()
     }
-  }, [cleanup])
+  }, []) // Empty deps - only run cleanup on unmount
 
   // Cleanup when deviceId changes while recording
   useEffect(() => {

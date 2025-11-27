@@ -34,6 +34,9 @@ export function useMicrophoneDevices(): UseMicrophoneDevicesReturn {
   const deviceId = useAppStore((state) => state.deviceId)
   const setDeviceId = useAppStore((state) => state.setDeviceId)
 
+  // Track if we've already initialized to prevent re-selection
+  const [hasInitialized, setHasInitialized] = useState(false)
+
   /**
    * Load available audio input devices
    */
@@ -61,22 +64,18 @@ export function useMicrophoneDevices(): UseMicrophoneDevicesReturn {
       setDevices(audioInputs)
       console.log(`[MicrophoneDevices] Found ${audioInputs.length} devices`)
 
-      // Set default device if none selected
-      if (audioInputs.length > 0 && !deviceId) {
-        const defaultDevice = audioInputs.find(d => d.isDefault) || audioInputs[0]
-        setDeviceId(defaultDevice.deviceId)
-        console.log(`[MicrophoneDevices] Selected default: ${defaultDevice.label}`)
-      }
+      return audioInputs
 
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to access microphone'
       console.error('[MicrophoneDevices] Error:', errorMessage)
       setError(errorMessage)
       setHasPermission(false)
+      return []
     } finally {
       setIsLoading(false)
     }
-  }, [deviceId, setDeviceId])
+  }, []) // No dependencies - pure function
 
   /**
    * Handle device selection
@@ -96,10 +95,20 @@ export function useMicrophoneDevices(): UseMicrophoneDevicesReturn {
     await loadDevices()
   }, [loadDevices])
 
-  // Initial load
+  // Initial load with default selection
   useEffect(() => {
-    loadDevices()
-  }, [loadDevices])
+    const initDevices = async () => {
+      const audioInputs = await loadDevices()
+      // Set default device only on first load if none selected
+      if (audioInputs.length > 0 && !deviceId && !hasInitialized) {
+        const defaultDevice = audioInputs.find(d => d.isDefault) || audioInputs[0]
+        setDeviceId(defaultDevice.deviceId)
+        setHasInitialized(true)
+        console.log(`[MicrophoneDevices] Selected default: ${defaultDevice.label}`)
+      }
+    }
+    initDevices()
+  }, []) // Empty deps - only run once on mount
 
   // Listen for device changes
   useEffect(() => {
