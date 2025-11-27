@@ -13,13 +13,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     <SidebarProvider>
       <AppSidebar />
       <main className="flex flex-col w-full h-screen overflow-hidden bg-background text-foreground transition-colors duration-300">
-        <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4 bg-card/50 backdrop-blur-sm sticky top-0 z-10">
-          <SidebarTrigger className="-ml-1" />
-          <Separator orientation="vertical" className="mr-2 h-4" />
+        <header className="flex h-20 shrink-0 items-center gap-4 border-b px-6 bg-background/80 backdrop-blur-xl sticky top-0 z-10 shadow-sm">
+          <SidebarTrigger className="-ml-2 h-10 w-10 hover:bg-accent/50 transition-colors" />
+          <Separator orientation="vertical" className="mr-2 h-6 bg-border/50" />
           <Breadcrumb>
             <BreadcrumbList>
               <BreadcrumbItem>
-                <BreadcrumbPage>Dashboard</BreadcrumbPage>
+                <BreadcrumbPage className="text-lg font-semibold tracking-tight text-foreground/90">Dashboard</BreadcrumbPage>
               </BreadcrumbItem>
             </BreadcrumbList>
           </Breadcrumb>

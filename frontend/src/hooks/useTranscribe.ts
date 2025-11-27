@@ -2,7 +2,10 @@ import useWebSocket, { ReadyState } from 'react-use-websocket'
 import { useAppStore } from '@/store/useAppStore'
 import { useEffect, useCallback } from 'react'
 
+import { WS_URL } from '@/lib/constants'
+
 export const useTranscribe = () => {
+
   const {
     currentModel,
     setConnected,
@@ -11,8 +14,8 @@ export const useTranscribe = () => {
     setLatency
   } = useAppStore()
 
-  // Hardcoded for now, but should be env var in production
-  const WS_URL = 'ws://localhost:8000/ws/transcribe'
+  // Use constant from env/config
+
 
   const { sendMessage, lastMessage, readyState } = useWebSocket(WS_URL, {
     onOpen: () => {
