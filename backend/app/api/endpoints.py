@@ -215,3 +215,17 @@ def switch_model(model: str):
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=503, detail=f"Failed to start model: {str(e)}")
+
+@router.get("/api/v1/models/status")
+async def get_model_status():
+    """
+    Get the status of the currently loaded model.
+    """
+    current_model = manager.current_model_name
+    is_loaded = manager.current_model_instance is not None
+    
+    return {
+        "current_model": current_model,
+        "is_loaded": is_loaded,
+        "status": "ready" if is_loaded else "loading" if current_model else "idle"
+    }

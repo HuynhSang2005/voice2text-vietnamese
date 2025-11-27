@@ -65,9 +65,11 @@ class WhisperWorker(BaseWorker):
             # print(f"Energy: {chunk_energy}")
             
             # Threshold for silence (tunable)
-            SILENCE_THRESHOLD = 0.001 
-            MIN_DURATION = 2.0
-            MAX_DURATION = 10.0
+            # Lowered to 0.0005 to be less sensitive (wait for real silence)
+            SILENCE_THRESHOLD = 0.0005 
+            # Increased min duration to ensure context
+            MIN_DURATION = 3.0
+            MAX_DURATION = 15.0
             
             duration = len(self.buffer) / 16000.0
             
@@ -88,11 +90,12 @@ class WhisperWorker(BaseWorker):
                 
             if should_transcribe:
                 # Transcribe
+                # Disabled internal vad_filter to prevent cutting off speech segments
                 segments, info = self.model.transcribe(
                     self.buffer, 
                     language="vi", 
-                    beam_size=1, 
-                    vad_filter=True # Use internal VAD to filter out non-speech within the chunk
+                    beam_size=5, # Increased beam_size for better accuracy
+                    vad_filter=False 
                 )
                 
                 text = " ".join([s.text for s in segments]).strip()
