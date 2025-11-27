@@ -1,8 +1,8 @@
-import { createRootRoute } from '@tanstack/react-router'
+import { createRootRoute, Outlet } from '@tanstack/react-router'
 import { TanStackRouterDevtoolsPanel } from '@tanstack/react-router-devtools'
 import { TanStackDevtools } from '@tanstack/react-devtools'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import MainLayout from '../components/layout/MainLayout'
+import AppShell from '../components/layout/AppShell'
 import { ThemeProvider } from '../components/theme-provider'
 import { Toaster } from '@/components/ui/sonner'
 
@@ -12,7 +12,9 @@ export const Route = createRootRoute({
   component: () => (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
-        <MainLayout />
+        <AppShell>
+          <Outlet />
+        </AppShell>
         <Toaster />
         <TanStackDevtools
           config={{
