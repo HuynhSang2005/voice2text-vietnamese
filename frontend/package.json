@@ -11,18 +11,21 @@
     "gen:api": "openapi-ts"
   },
   "dependencies": {
+    "@ant-design/icons": "^6.1.0",
     "@hey-api/client-fetch": "^0.13.1",
-    "@tailwindcss/vite": "^4.0.6",
+    "@tailwindcss/vite": "^4.1.17",
     "@tanstack/react-query": "^5.90.11",
     "@tanstack/react-query-devtools": "^5.91.1",
     "@tanstack/react-router": "^1.139.10",
     "@tanstack/react-router-devtools": "^1.139.10",
+    "antd": "^6.0.0",
     "clsx": "^2.1.1",
+    "dayjs": "^1.11.19",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-use-websocket": "^4.13.0",
     "tailwind-merge": "^3.4.0",
-    "tailwindcss": "^4.0.6",
+    "tailwindcss": "^4.1.17",
     "zod": "^4.1.13",
     "zustand": "^5.0.8"
   },

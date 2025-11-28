@@ -19,4 +19,20 @@ export default defineConfig({
       '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // Ant Design core
+          antd: ['antd'],
+          // Ant Design icons
+          'antd-icons': ['@ant-design/icons'],
+          // React ecosystem
+          react: ['react', 'react-dom'],
+          // TanStack libraries
+          tanstack: ['@tanstack/react-router', '@tanstack/react-query'],
+        },
+      },
+    },
+  },
 })

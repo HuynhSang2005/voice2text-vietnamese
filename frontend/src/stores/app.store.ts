@@ -4,6 +4,11 @@ import { devtools, persist } from 'zustand/middleware'
 export type ModelId = 'zipformer' | 'faster-whisper' | 'phowhisper' | 'hkab'
 
 interface AppState {
+  // Theme
+  isDarkMode: boolean
+  setDarkMode: (isDark: boolean) => void
+  toggleDarkMode: () => void
+
   // Selected model
   selectedModel: ModelId
   setSelectedModel: (model: ModelId) => void
@@ -27,6 +32,11 @@ export const useAppStore = create<AppState>()(
   devtools(
     persist(
       (set) => ({
+        // Theme
+        isDarkMode: false,
+        setDarkMode: (isDark) => set({ isDarkMode: isDark }),
+        toggleDarkMode: () => set((state) => ({ isDarkMode: !state.isDarkMode })),
+
         // Default values
         selectedModel: 'zipformer',
         setSelectedModel: (model) => set({ selectedModel: model }),
@@ -49,6 +59,7 @@ export const useAppStore = create<AppState>()(
         name: 'voice2text-storage',
         partialize: (state) => ({
           selectedModel: state.selectedModel,
+          isDarkMode: state.isDarkMode,
         }),
       }
     )

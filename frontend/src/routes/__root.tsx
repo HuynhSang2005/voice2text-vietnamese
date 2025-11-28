@@ -1,5 +1,8 @@
 import { createRootRoute, Outlet } from '@tanstack/react-router'
 import { TanStackRouterDevtools } from '@tanstack/react-router-devtools'
+import { Layout } from 'antd'
+
+const { Content } = Layout
 
 export const Route = createRootRoute({
   component: RootLayout,
@@ -7,9 +10,11 @@ export const Route = createRootRoute({
 
 function RootLayout() {
   return (
-    <div className="min-h-screen bg-gray-50">
-      <Outlet />
+    <Layout className="min-h-screen">
+      <Content>
+        <Outlet />
+      </Content>
       <TanStackRouterDevtools />
-    </div>
+    </Layout>
   )
 }
