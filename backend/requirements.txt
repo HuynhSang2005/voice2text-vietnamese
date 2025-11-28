@@ -1,18 +1,33 @@
-fastapi
-uvicorn[standard]
+# Core Framework
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+pydantic-settings>=2.6.0
+
+# Database
+sqlmodel>=0.0.22
+sqlalchemy[asyncio]>=2.0.0
+aiosqlite>=0.20.0
+
+# AI Models
+sherpa-onnx>=1.10.0
+faster-whisper>=1.0.0
+ctranslate2>=4.0.0
+onnxruntime>=1.19.0
+sentencepiece>=0.2.0
+
+# Audio Processing
+numpy>=1.26.0
+soundfile>=0.12.0
+librosa>=0.10.0
+
+# Utilities
 python-multipart
 python-dotenv
-sqlmodel
-aiosqlite
-sherpa-onnx
-faster-whisper
-ctranslate2
-websockets
-numpy
-soundfile
-librosa
 huggingface_hub
-sqlalchemy
-pytest
-pytest-asyncio
-pytest-mock
+websockets
+
+# Testing
+pytest>=8.2.0,<9.0.0
+pytest-asyncio>=0.21.0,<1.0.0
+pytest-mock>=3.10.0
+httpx>=0.27.0

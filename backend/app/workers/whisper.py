@@ -1,36 +1,42 @@
 import os
 import numpy as np
+
 from app.workers.base import BaseWorker
+from app.core.config import settings
+
 
 class WhisperWorker(BaseWorker):
+    """Worker for Whisper models using faster-whisper (CTranslate2)."""
+    
+    # VAD Configuration
+    SILENCE_THRESHOLD = 0.0005
+    MIN_DURATION = 3.0  # seconds
+    MAX_DURATION = 15.0  # seconds
+    
     def load_model(self):
         from faster_whisper import WhisperModel
         
-        # model_path passed in __init__ is the model name from manager
-        # e.g., "faster-whisper" or "phowhisper"
-        
-        model_name = self.model_path # This is actually the key used in manager
-        
         compute_type = "int8"
-        device = "cpu" # Or cuda if available
+        device = "cpu"
         
-        if model_name == "phowhisper":
+        if self.model_name == "phowhisper":
             # Load from local converted path
-            model_dir = os.path.join("models_storage", "phowhisper-ct2")
+            base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"))
+            model_dir = os.path.join(base_dir, settings.MODEL_STORAGE_PATH, "phowhisper-ct2")
+            
             if os.path.exists(model_dir):
-                print(f"[WhisperWorker] Loading PhoWhisper from {model_dir}")
+                self.logger.info(f"Loading PhoWhisper from {model_dir}")
                 self.model = WhisperModel(model_dir, device=device, compute_type=compute_type)
             else:
-                print(f"[WhisperWorker] Warning: PhoWhisper model not found at {model_dir}")
-                print("[WhisperWorker] Falling back to 'small' model (standard Faster-Whisper).")
+                self.logger.warning(f"PhoWhisper not found at {model_dir}, falling back to 'small'")
                 self.model = WhisperModel("small", device=device, compute_type=compute_type)
         else:
-            # Default faster-whisper (small or medium)
-            # Auto download
+            # Default faster-whisper (small)
+            self.logger.info("Loading faster-whisper 'small' model")
             self.model = WhisperModel("small", device=device, compute_type=compute_type)
             
         self.buffer = np.array([], dtype=np.float32)
-        print(f"Whisper model ({model_name}) loaded.")
+        self.logger.info(f"Whisper model ({self.model_name}) loaded successfully")
 
     def process(self, item):
         if not self.model:
@@ -39,7 +45,10 @@ class WhisperWorker(BaseWorker):
         if isinstance(item, dict):
             audio_data = item.get("audio")
             if item.get("reset"):
+                self.logger.debug("Resetting buffer for new session")
                 self.buffer = np.array([], dtype=np.float32)
+                if not audio_data:
+                    return
         else:
             audio_data = item
 
@@ -51,51 +60,27 @@ class WhisperWorker(BaseWorker):
             # Append to buffer
             self.buffer = np.concatenate((self.buffer, samples))
             
-            # VAD-based buffering strategy
-            # We use a simple energy-based VAD or just time-based for now to keep it simple and fast on CPU
-            # without adding heavy dependencies like torch.hub load inside the worker.
-            # Ideally we should use Silero VAD, but let's start with a smart buffering:
-            # 1. Accumulate at least 2 seconds.
-            # 2. If > 2s, check if the last 0.5s is silent (low energy).
-            # 3. If silent, transcribe and clear buffer.
-            # 4. If buffer > 10s, force transcribe.
-            
-            # Energy calculation
-            chunk_energy = np.mean(samples**2)
-            # print(f"Energy: {chunk_energy}")
-            
-            # Threshold for silence (tunable)
-            # Lowered to 0.0005 to be less sensitive (wait for real silence)
-            SILENCE_THRESHOLD = 0.0005 
-            # Increased min duration to ensure context
-            MIN_DURATION = 3.0
-            MAX_DURATION = 15.0
-            
+            # Energy-based VAD
             duration = len(self.buffer) / 16000.0
-            
             should_transcribe = False
             
-            if duration > MIN_DURATION:
-                # Check last 0.5s
+            if duration > self.MIN_DURATION:
+                # Check last 0.5s for silence
                 last_05s = self.buffer[-8000:]
-                last_energy = np.mean(last_05s**2)
+                last_energy = np.mean(last_05s ** 2)
                 
-                if last_energy < SILENCE_THRESHOLD:
+                if last_energy < self.SILENCE_THRESHOLD:
                     should_transcribe = True
-                    # print("Silence detected, transcribing...")
             
-            if duration > MAX_DURATION:
+            if duration > self.MAX_DURATION:
                 should_transcribe = True
-                # print("Max duration reached, transcribing...")
                 
             if should_transcribe:
-                # Transcribe
-                # Disabled internal vad_filter to prevent cutting off speech segments
                 segments, info = self.model.transcribe(
                     self.buffer, 
                     language="vi", 
-                    beam_size=5, # Increased beam_size for better accuracy
-                    vad_filter=False 
+                    beam_size=5,
+                    vad_filter=False
                 )
                 
                 text = " ".join([s.text for s in segments]).strip()
@@ -103,8 +88,8 @@ class WhisperWorker(BaseWorker):
                 if text:
                     self.output_queue.put({
                         "text": text,
-                        "is_final": True, # We consider this a "final" segment
-                        "model": self.model_path
+                        "is_final": True,
+                        "model": self.model_name
                     })
                 
                 # Reset buffer

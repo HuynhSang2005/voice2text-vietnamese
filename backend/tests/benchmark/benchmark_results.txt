@@ -1,0 +1,34 @@
+============================================================
+STT Model Benchmark Results
+Date: 2025-11-28 16:08:18
+============================================================
+
+
+--- Zipformer Load Benchmark ---
+Load Time: 1.41s
+Memory Delta: 0.00 MB
+Memory Total: 0.00 MB
+
+
+--- Faster-Whisper Load Benchmark ---
+Load Time: 1.71s
+Memory Delta: 0.00 MB
+Memory Total: 0.00 MB
+
+
+--- HKAB Load Benchmark ---
+Load Time: 0.26s
+Memory Delta: 0.00 MB
+Memory Total: 0.00 MB
+
+Zipformer 1.0s audio: latency=0.021s, RTF=0.021
+Zipformer 3.0s audio: latency=0.055s, RTF=0.018
+Zipformer 5.0s audio: latency=0.068s, RTF=0.014
+Whisper 5.0s audio: latency=1.767s, RTF=0.353
+
+--- Zipformer Throughput Benchmark ---
+Chunks: 10 x 1.0s
+Total Audio: 10.0s
+Processing Time: 0.64s
+Throughput: 15.67x real-time
+

@@ -1,21 +1,24 @@
 import asyncio
 import json
-import queue
+import logging
 from typing import List, Any
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, HTTPException
+from datetime import datetime
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, HTTPException, status
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import select
 
 from app.core.manager import manager
+from app.core.database import get_session, engine
 from app.models.schema import TranscriptionLog
-from app.api.deps import get_session
-from app.models.protocols import ModelInfo
+from app.models.protocols import ModelInfo, ModelStatus, SwitchModelResponse
 
-router = APIRouter()
+logger = logging.getLogger(__name__)
 
-@router.get("/api/v1/models", response_model=List[ModelInfo])
+router = APIRouter(tags=["Speech-to-Text"])
+
+@router.get("/api/v1/models", response_model=List[ModelInfo], summary="List available models")
 async def get_models():
-    """List available speech-to-text models."""
+    """List available speech-to-text models with their capabilities."""
     return [
         ModelInfo(id="zipformer", name="Zipformer (Offline)", description="High accuracy, offline processing"),
         ModelInfo(id="faster-whisper", name="Faster Whisper (Buffered)", description="High accuracy, buffered processing"),
@@ -23,19 +26,65 @@ async def get_models():
         ModelInfo(id="hkab", name="HKAB (Streaming)", description="Experimental Streaming RNN-T"),
     ]
 
-@router.get("/api/v1/history", response_model=List[TranscriptionLog])
-async def get_history(session: AsyncSession = Depends(get_session)):
-    """Get transcription history."""
-    result = await session.exec(select(TranscriptionLog).order_by(TranscriptionLog.created_at.desc()).limit(50))
+@router.get("/api/v1/history", response_model=List[TranscriptionLog], summary="Get transcription history")
+async def get_history(
+    session: AsyncSession = Depends(get_session),
+    page: int = 1,
+    limit: int = 50,
+    search: str = None,
+    model: str = None,
+    min_latency: float = None,
+    max_latency: float = None,
+    start_date: datetime = None,
+    end_date: datetime = None,
+):
+    """
+    Get transcription history with filtering and pagination.
+    
+    - **page**: Page number (1-indexed)
+    - **limit**: Number of items per page (max 100)
+    - **search**: Search in transcription content
+    - **model**: Filter by model ID
+    - **min_latency/max_latency**: Filter by latency range
+    - **start_date/end_date**: Filter by date range
+    """
+    query = select(TranscriptionLog).order_by(TranscriptionLog.created_at.desc())
+    
+    if search:
+        query = query.where(TranscriptionLog.content.contains(search))
+    if model:
+        query = query.where(TranscriptionLog.model_id == model)
+    if min_latency is not None:
+        query = query.where(TranscriptionLog.latency_ms >= min_latency)
+    if max_latency is not None:
+        query = query.where(TranscriptionLog.latency_ms <= max_latency)
+    if start_date:
+        query = query.where(TranscriptionLog.created_at >= start_date)
+    if end_date:
+        query = query.where(TranscriptionLog.created_at <= end_date)
+        
+    # Pagination
+    offset = (page - 1) * limit
+    query = query.offset(offset).limit(limit)
+    
+    result = await session.exec(query)
     return result.all()
 
 @router.websocket("/ws/transcribe")
-async def websocket_endpoint(websocket: WebSocket, session: AsyncSession = Depends(get_session)):
+async def websocket_endpoint(websocket: WebSocket):
+    """
+    WebSocket endpoint for real-time speech transcription.
+    
+    Protocol:
+    1. Client connects
+    2. Client sends config message (optional): {"type": "config", "model": "zipformer"}
+    3. Client sends binary audio data (Int16 PCM, 16kHz)
+    4. Server sends transcription results: {"text": "...", "is_final": bool, "model": "..."}
+    """
     await websocket.accept()
     
-    model_name = "zipformer" # Default
-    # Initial session ID (connection-based)
-    session_id = str(id(websocket)) 
+    model_name = "zipformer"  # Default
+    session_id = str(id(websocket))
     
     try:
         # 1. Wait for config message (Optional, or first message)
@@ -46,42 +95,41 @@ async def websocket_endpoint(websocket: WebSocket, session: AsyncSession = Depen
                 config = json.loads(first_msg["text"])
                 if config.get("type") == "config":
                     model_name = config.get("model", "zipformer")
-                    print(f"Client requested model: {model_name}")
+                    logger.info(f"Client requested model: {model_name}")
             except json.JSONDecodeError:
                 pass
-        elif "bytes" in first_msg:
-            # It's audio, put it in queue later
-            pass
-            
+        
         # Start model process
         manager.start_model(model_name)
         input_q, output_q = manager.get_queues(model_name)
         
         if not input_q or not output_q:
-            await websocket.close(code=1000, reason="Failed to start model")
+            await websocket.close(code=status.WS_1011_INTERNAL_ERROR, reason="Failed to start model")
             return
 
         # If first message was audio, put it in queue
         if "bytes" in first_msg:
-             input_q.put(first_msg["bytes"])
+            await asyncio.to_thread(input_q.put, first_msg["bytes"])
 
         async def receive_audio():
-            nonlocal session_id, model_name, input_q, output_q # Allow updating from inner scope
+            nonlocal session_id, model_name, input_q, output_q
             try:
                 audio_packet_count = 0
                 while True:
                     message = await websocket.receive()
                     
-                    if message["type"] == "websocket.disconnect":
-                        print("Client disconnected (receive loop)")
+                    if message.get("type") == "websocket.disconnect":
+                        logger.info("Client disconnected (receive loop)")
                         break
                         
                     if "bytes" in message:
                         audio_data = message["bytes"]
                         audio_packet_count += 1
-                        if audio_packet_count % 10 == 0:
-                            print(f"[WebSocket] Received audio packet #{audio_packet_count}, size: {len(audio_data)} bytes")
-                        input_q.put(audio_data)
+                        if audio_packet_count % 50 == 0:
+                            logger.debug(f"Received audio packet #{audio_packet_count}, size: {len(audio_data)} bytes")
+                        # Use asyncio.to_thread to avoid blocking event loop
+                        await asyncio.to_thread(input_q.put, audio_data)
+                        
                     elif "text" in message:
                         try:
                             data = json.loads(message["text"])
@@ -90,96 +138,63 @@ async def websocket_endpoint(websocket: WebSocket, session: AsyncSession = Depen
                             if msg_type == "config":
                                 new_model = data.get("model")
                                 if new_model and new_model != model_name:
-                                    print(f"Switching model to {new_model}")
+                                    logger.info(f"Switching model to {new_model}")
                                     model_name = new_model
-                                    
-                                    # Switch model in manager
                                     manager.start_model(model_name)
                                     input_q, output_q = manager.get_queues(model_name)
                                     
                             elif msg_type == "start_session":
-                                # Client starting a new recording session
                                 new_session_id = data.get("sessionId")
                                 if new_session_id:
                                     session_id = new_session_id
-                                    print(f"[WebSocket] Starting new session: {session_id}")
+                                    logger.info(f"Starting new session: {session_id}")
+                                    await asyncio.to_thread(input_q.put, {"reset": True})
                                     
-                                    # Signal worker to reset context
-                                    input_q.put({"reset": True})
-                                    
-                        except Exception as e:
-                            print(f"Error parsing text message: {e}")
-                            pass
+                        except json.JSONDecodeError as e:
+                            logger.warning(f"Invalid JSON message: {e}")
+                            
             except WebSocketDisconnect:
-                print("Client disconnected (receive)")
+                logger.info("Client disconnected (receive)")
             except RuntimeError as e:
-                if "disconnect message has been received" in str(e):
-                    print("Client disconnected (RuntimeError)")
-                else:
-                    print(f"RuntimeError receiving audio: {e}")
+                if "disconnect message has been received" not in str(e):
+                    logger.error(f"RuntimeError receiving audio: {e}")
             except Exception as e:
-                print(f"Error receiving audio: {e}")
-                import traceback
-                traceback.print_exc()
+                logger.error(f"Error receiving audio: {e}", exc_info=True)
 
         async def send_results():
             try:
                 result_count = 0
                 while True:
-                    # Non-blocking check
+                    # Use asyncio.to_thread for blocking Queue operations
                     try:
-                        while not output_q.empty():
-                            result = output_q.get_nowait()
+                        # Check if queue has items (non-blocking)
+                        is_empty = await asyncio.to_thread(lambda: output_q.empty())
+                        if not is_empty:
+                            result = await asyncio.to_thread(output_q.get_nowait)
                             result_count += 1
                             
-                            # print(f"[WebSocket] Sending result #{result_count}: text='{result.get('text', '')}', is_final={result.get('is_final')}")
-                            
-                            # Send to client
                             await websocket.send_json(result)
                             
-                            # Save to DB if final OR if we want to save partials? 
-                            # Usually we save final. 
-                            # But since we are using OfflineRecognizer in buffered mode, we might want to save 
-                            # the "final" result of the session when the session ends?
-                            # OR, we can just save whatever we have as a log entry.
-                            # For now, let's save if text is not empty (updates the log)
-                            
+                            # Save to DB with fresh session (avoid session expiry)
                             text_content = result.get("text", "").strip()
                             if text_content:
-                                # We want to UPSERT or INSERT?
-                                # If we want one log per session, we should update the existing entry for this session_id?
-                                # OR just insert a new log for every update? Inserting every update is too much.
-                                # Let's insert only if it's "final" (which we don't have yet from worker)
-                                # OR, let's assume the client will send a "stop_session" to mark finality?
-                                # For simplicity requested by user: "mỗi lần mở mic... là 1 session"
-                                # We can log the latest text for this session_id.
-                                
-                                # Check if log exists for this session
-                                statement = select(TranscriptionLog).where(TranscriptionLog.session_id == session_id)
-                                existing_log = (await session.exec(statement)).first()
-                                
-                                if existing_log:
-                                    existing_log.content = text_content
-                                    session.add(existing_log)
-                                else:
-                                    db_log = TranscriptionLog(
-                                        session_id=session_id,
-                                        model_id=model_name,
-                                        content=text_content,
-                                        latency_ms=0.0,
-                                    )
-                                    session.add(db_log)
-                                await session.commit()
-                                
-                        # Optimize: Yield control to event loop to prevent starvation
-                        await asyncio.sleep(0.01) 
-                    except queue.Empty:
-                        await asyncio.sleep(0.01)
+                                await _save_transcription(
+                                    session_id=session_id,
+                                    model_id=model_name,
+                                    content=text_content
+                                )
+                        else:
+                            await asyncio.sleep(0.02)  # 20ms polling interval
+                            
+                    except Exception as e:
+                        if "Empty" not in str(type(e).__name__):
+                            logger.error(f"Error in send_results: {e}")
+                        await asyncio.sleep(0.02)
+                        
             except Exception as e:
-                print(f"Error sending results: {e}")
+                logger.error(f"Error sending results: {e}", exc_info=True)
 
-        # Run both tasks
-        # Use asyncio.wait to handle task cancellation properly
+        # Run both tasks concurrently
         tasks = [
             asyncio.create_task(receive_audio()),
             asyncio.create_task(send_results())
@@ -189,43 +204,83 @@ async def websocket_endpoint(websocket: WebSocket, session: AsyncSession = Depen
         # Cancel pending tasks
         for task in pending:
             task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
             
     except WebSocketDisconnect:
-        print("WebSocket disconnected")
+        logger.info("WebSocket disconnected")
     except Exception as e:
-        print(f"WebSocket error: {e}")
-    finally:
-        # Optional: Stop model if it's a dedicated session
-        # manager.stop_current_model()
-        pass
+        logger.error(f"WebSocket error: {e}", exc_info=True)
 
-@router.post("/models/switch", 
+
+async def _save_transcription(session_id: str, model_id: str, content: str):
+    """Save transcription to database with fresh session."""
+    from sqlalchemy.orm import sessionmaker
+    
+    async_session = sessionmaker(
+        engine, class_=AsyncSession, expire_on_commit=False
+    )
+    
+    async with async_session() as session:
+        try:
+            # Check if log exists for this session
+            statement = select(TranscriptionLog).where(TranscriptionLog.session_id == session_id)
+            existing_log = (await session.exec(statement)).first()
+            
+            if existing_log:
+                existing_log.content = content
+                session.add(existing_log)
+            else:
+                db_log = TranscriptionLog(
+                    session_id=session_id,
+                    model_id=model_id,
+                    content=content,
+                    latency_ms=0.0,
+                )
+                session.add(db_log)
+            await session.commit()
+        except Exception as e:
+            logger.error(f"Failed to save transcription: {e}")
+            await session.rollback()
+
+@router.post("/api/v1/models/switch", 
+             response_model=SwitchModelResponse,
+             summary="Switch active model",
              responses={
                  400: {"description": "Invalid model name", "content": {"application/problem+json": {}}},
                  503: {"description": "Model failed to start", "content": {"application/problem+json": {}}}
              })
 def switch_model(model: str):
     """
-    Manually switch model via REST (optional, mostly for testing).
+    Manually switch the active model.
+    
+    Available models: zipformer, faster-whisper, phowhisper, hkab
     """
+    valid_models = ["zipformer", "faster-whisper", "phowhisper", "hkab"]
+    if model not in valid_models:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, 
+            detail=f"Invalid model. Valid options: {valid_models}"
+        )
     try:
         manager.start_model(model)
-        return {"status": "success", "current_model": model}
+        return SwitchModelResponse(status="success", current_model=model)
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=503, detail=f"Failed to start model: {str(e)}")
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=f"Failed to start model: {str(e)}")
 
-@router.get("/api/v1/models/status")
+
+@router.get("/api/v1/models/status", response_model=ModelStatus, summary="Get model status")
 async def get_model_status():
-    """
-    Get the status of the currently loaded model.
-    """
-    current_model = manager.current_model_name
-    is_loaded = manager.current_model_instance is not None
+    """Get the status of the currently loaded model."""
+    current_model = manager.current_model
+    is_loaded = current_model is not None and current_model in manager.active_processes
     
-    return {
-        "current_model": current_model,
-        "is_loaded": is_loaded,
-        "status": "ready" if is_loaded else "loading" if current_model else "idle"
-    }
+    return ModelStatus(
+        current_model=current_model,
+        is_loaded=is_loaded,
+        status="ready" if is_loaded else "idle"
+    )
