@@ -58,6 +58,7 @@ Chạy lệnh generate trong thư mục Frontend:
 ```bash
 cd frontend
 bun run gen:api
+# Hoặc: npm run gen:api / pnpm run gen:api
 ```
 
 Lệnh này sẽ:
@@ -91,7 +92,7 @@ function HistoryList() {
 }
 ```
 
-**B. Sử dụng Zod để Validate**
+**B. Sử dụng Zod để Validate (Zod v4)**
 
 ```tsx
 import { z } from 'zod';
@@ -100,6 +101,9 @@ import { TranscriptionLogSchema } from '@/client/zod.gen';
 // Dùng schema được tạo ra để validate form hoặc dữ liệu
 const myData = { ... };
 const result = TranscriptionLogSchema.safeParse(myData);
+
+// Zod v4 cũng hỗ trợ type inference
+type TranscriptionLog = z.infer<typeof TranscriptionLogSchema>;
 ```
 
 ## 4. Quy tắc & Best Practices

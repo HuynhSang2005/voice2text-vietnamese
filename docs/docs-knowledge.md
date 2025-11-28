@@ -42,10 +42,14 @@ Quy chuẩn input audio bắt buộc cho mọi model để đảm bảo tính nh
 ### 4. Thuật ngữ & Công nghệ (Tech Glossary)
 
 - **VAD (Voice Activity Detection):** Kỹ thuật phát hiện tiếng nói con người. Dùng để loại bỏ khoảng lặng (silence) và xác định thời điểm ngắt câu để gửi cho Whisper xử lý.
+  - _Silero VAD:_ Pre-trained neural network VAD (built-in faster-whisper).
+  - _Energy-based VAD:_ Đơn giản hơn, dựa trên RMS energy threshold.
 - **Quantization (Lượng tử hóa):** Kỹ thuật giảm độ chính xác của trọng số model (từ float32 xuống int8) để giảm dung lượng RAM và tăng tốc độ inference mà ít ảnh hưởng đến độ chính xác.
 - **AudioWorklet:** API của trình duyệt chạy trên luồng riêng (khác Main Thread), dùng để capture và xử lý audio raw thời gian thực mà không bị giật lag UI.
 - **Inference Engine:**
-  - _CTranslate2:_ Engine tối ưu cho Transformer models (Whisper/PhoWhisper).
-  - _Sherpa-onnx:_ Engine tối ưu cho Streaming models (Zipformer).
+  - _CTranslate2:_ Engine tối ưu cho Transformer models (Whisper/PhoWhisper). Hỗ trợ int8/float16.
+  - _Sherpa-onnx:_ Engine tối ưu cho Transducer models (Zipformer). Hỗ trợ streaming & offline.
+  - _ONNX Runtime:_ General-purpose inference engine. Dùng cho custom models (HKAB).
+- **RNN-Transducer (RNN-T):** Architecture kết hợp encoder (audio features) + prediction network (text context) + joint network. Hỗ trợ streaming inference.
 
 ---

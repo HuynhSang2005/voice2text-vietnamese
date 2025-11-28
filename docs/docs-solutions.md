@@ -2,31 +2,33 @@
 
 ### 1\. Dual-Strategy Processing (Chiến lược xử lý kép)
 
-Do tính chất khác biệt của 3 model, Backend sẽ áp dụng **Strategy Pattern** để tách biệt logic xử lý luồng âm thanh.
+Do tính chất khác biệt của các model, Backend sẽ áp dụng **Strategy Pattern** để tách biệt logic xử lý luồng âm thanh.
 
-#### A. Strategy 1: True Streaming (Dành cho Zipformer)
+#### A. Strategy 1: Buffered Offline (Dành cho Zipformer/HKAB)
 
-- **Nguyên lý:** Input vào là Output ra ngay lập tức (Frame-in, Token-out).
-- **Logic Flow:**
-  1.  Nhận Audio Chunk (100-200ms) từ Queue.
-  2.  Feed trực tiếp vào `sherpa-onnx` stream decoder.
-  3.  Kiểm tra: Decoder có sinh ra token mới không?
-  4.  Nếu có $\rightarrow$ Gửi ngay về Client.
-  5.  Giữ nguyên Context (State) cho chunk tiếp theo.
+> **Lưu ý:** Mặc dù Zipformer/HKAB là RNN-T models có khả năng true streaming, implementation hiện tại sử dụng **OfflineRecognizer** với audio buffering để đơn giản hóa.
 
-#### B. Strategy 2: Buffered & VAD-Triggered (Dành cho Faster/PhoWhisper)
-
-- **Nguyên lý:** Tích lũy âm thanh $\rightarrow$ Tìm điểm ngắt $\rightarrow$ Xử lý 1 cục $\rightarrow$ Trả kết quả.
+- **Nguyên lý:** Accumulate audio chunks → Process full buffer → Return result.
 - **Logic Flow:**
   1.  Nhận Audio Chunk từ Queue.
-  2.  **VAD Check:** Chạy qua Silero VAD để xác định xác suất giọng nói.
+  2.  Buffer audio cho đến khi đủ dữ liệu hoặc gặp silence.
+  3.  Feed buffer vào `sherpa-onnx.OfflineRecognizer` (Zipformer) hoặc ONNX Runtime (HKAB).
+  4.  Trả về kết quả transcription.
+  5.  Clear buffer, repeat.
+
+#### B. Strategy 2: Energy-based VAD Buffered (Dành cho Faster/PhoWhisper)
+
+- **Nguyên lý:** Tích lũy âm thanh $\rightarrow$ Detect silence via energy $\rightarrow$ Xử lý 1 cục $\rightarrow$ Trả kết quả.
+- **Logic Flow:**
+  1.  Nhận Audio Chunk từ Queue.
+  2.  **Energy-based VAD:** Tính RMS energy của audio samples.
   3.  **Buffer Accumulation:**
-      - Nếu đang nói: Append chunk vào buffer tạm (`temp_buffer`).
-      - Nếu khoảng lặng \> ngưỡng (vd: 500ms): Coi như hết câu (`is_final`).
+      - Nếu energy > `SILENCE_THRESHOLD` (0.0005): Append chunk vào buffer.
+      - Nếu energy thấp (silence detected): Coi như hết câu (`is_final`).
   4.  **Trigger Inference:**
-      - Nếu `buffer` \> 3s (hoặc gặp khoảng lặng): Đẩy `buffer` vào model `faster-whisper`.
-  5.  **Post-process:** So sánh text mới với text cũ (overlap checking) để tránh lặp từ.
-  6.  Gửi kết quả về Client (kèm flag `is_final=True` nếu gặp khoảng lặng).
+      - Nếu `buffer` > `MIN_DURATION` (3s) hoặc gặp silence: Đẩy `buffer` vào model `faster-whisper`.
+      - Nếu `buffer` > `MAX_DURATION` (15s): Force transcribe.
+  5.  **Post-process:** Trả text về Client với flag `is_final`.
 
 ---
 
@@ -61,9 +63,11 @@ Sử dụng giao thức WebSocket với 2 loại bản tin:
     - Thay vì dùng `threading` (bị giới hạn bởi Python GIL), sử dụng `torch.multiprocessing`. Mỗi Model Worker là một Process hệ điều hành riêng biệt.
     - Giao tiếp giữa WebSocket Process và AI Process qua `multiprocessing.Queue`.
 
-2.  **VAD Filtering (Bộ lọc khoảng lặng):**
+2.  **Energy-based VAD (Bộ lọc khoảng lặng):**
 
-    - Không bao giờ gửi khoảng lặng vào model Whisper (tốn tài nguyên vô ích). Nếu VAD báo "Silence", worker bỏ qua chunk đó ngay lập tức.
+    - Không bao giờ gửi khoảng lặng vào model Whisper (tốn tài nguyên vô ích).
+    - Sử dụng **energy-based detection** thay vì Silero VAD để giảm overhead.
+    - Logic: Tính RMS của samples, so sánh với `SILENCE_THRESHOLD = 0.0005`.
 
 3.  **Keep-Alive Models:**
 

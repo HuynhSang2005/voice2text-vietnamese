@@ -8,22 +8,24 @@ Chúng tôi sử dụng một stack hiện đại, tối ưu hóa hiệu năng c
 
 ### Core
 
-- **Runtime:** [Bun](https://bun.sh) (Package Manager & Runtime)
-- **Framework:** [React 19](https://react.dev) + [Vite](https://vitejs.dev)
-- **Ngôn ngữ:** [TypeScript](https://www.typescriptlang.org) (Strict Mode)
+- **Runtime:** [Bun](https://bun.sh) hoặc npm/pnpm (Package Manager)
+- **Framework:** [React 19.2](https://react.dev) + [Vite 7.x](https://vitejs.dev)
+- **Ngôn ngữ:** [TypeScript 5.7](https://www.typescriptlang.org) (Strict Mode)
 
 ### UI & Styling
 
 - **Styling Engine:** [Tailwind CSS v4](https://tailwindcss.com)
-- **Thư viện Component:** [Shadcn UI](https://ui.shadcn.com) (Radix Primitives + Tailwind)
-- **Icons:** [Lucide React](https://lucide.dev)
-- **Tiện ích:** `clsx`, `tailwind-merge`, `class-variance-authority` (CVA)
+- **Thư viện Component:** [Ant Design 6.0](https://ant.design) (Enterprise UI Library)
+- **Icons:** [@ant-design/icons 6.x](https://ant.design/components/icon)
+- **Date/Time:** [dayjs](https://day.js.org/) (Dependency của AntD)
+- **Tiện ích:** `clsx`, `tailwind-merge`
 
 ### Quản lý State & Data
 
-- **Global State:** [Zustand](https://github.com/pmndrs/zustand) (Nhẹ, dùng cho trạng thái WebSocket & Audio stream)
-- **Server State:** [TanStack Query](https://tanstack.com/query) (Dùng cho REST API fetching & caching)
-- **Routing:** [TanStack Router](https://tanstack.com/router) (Type-safe routing)
+- **Global State:** [Zustand 5.x](https://github.com/pmndrs/zustand) (Nhẹ, dùng cho trạng thái WebSocket & Audio stream)
+- **Server State:** [TanStack Query 5.x](https://tanstack.com/query) (Dùng cho REST API fetching & caching)
+- **Routing:** [TanStack Router 1.x](https://tanstack.com/router) (Type-safe routing)
+- **Validation:** [Zod 4.x](https://zod.dev) (Schema validation)
 
 ### Real-time & Audio
 
@@ -40,26 +42,18 @@ Chúng tôi tuân theo cấu trúc **Feature-based** hoặc **Domain-driven** đ
 ```
 frontend/
 ├── public/
-│   └── pcm-processor.js      # [CRITICAL] AudioWorklet processor
+│   ├── pcm-processor.js      # [CRITICAL] AudioWorklet processor
+│   └── manifest.json         # PWA manifest
 ├── src/
 │   ├── client/               # Auto-generated API client (Không sửa thủ công)
-│   ├── components/
-│   │   ├── ui/               # Shadcn UI primitives (Button, Card, etc.)
-│   │   └── common/           # Shared components (Header, Footer, Layout)
-│   ├── features/             # Feature-specific modules
-│   │   ├── dashboard/        # Tính năng Dashboard
-│   │   │   ├── components/   # Component riêng của Dashboard
-│   │   │   ├── hooks/        # Logic của Dashboard
-│   │   │   └── types/        # Types riêng của feature
-│   │   └── history/          # Tính năng Lịch sử Transcription
 │   ├── hooks/                # Global custom hooks (useAudioRecorder, useSocket)
-│   ├── lib/                  # Tiện ích (utils.ts, constants)
-│   ├── routes/               # Định nghĩa TanStack Router
-│   ├── store/                # Zustand stores (useAppStore)
-│   ├── styles/               # Global styles
-│   ├── App.tsx
-│   └── main.tsx
-├── components.json           # Cấu hình Shadcn
+│   ├── lib/                  # Tiện ích (utils.ts, constants, antd-config.ts)
+│   ├── routes/               # TanStack Router definitions
+│   ├── stores/               # Zustand stores (app.store.ts)
+│   ├── main.tsx              # Entry point với AntdProvider
+│   ├── styles.css            # Global styles + Tailwind
+│   └── routeTree.gen.ts      # Auto-generated route tree
+├── openapi-ts.config.ts      # Cấu hình Hey-API
 ├── vite.config.ts
 └── tsconfig.json
 ```
@@ -75,17 +69,20 @@ frontend/
 3.  **Strict Typing:** Không dùng `any`. Định nghĩa interface cho mọi cấu trúc dữ liệu. Dùng `zod` để validate nếu cần.
 4.  **Early Returns:** Sử dụng guard clauses để tránh lồng nhau quá sâu (deep nesting).
 
-### B. Sử dụng Shadcn UI
+### B. Sử dụng Ant Design
 
-1.  **CN Utility:** Luôn sử dụng hàm `cn()` (clsx + tailwind-merge) khi áp dụng class có điều kiện hoặc cho phép ghi đè class.
+1.  **ConfigProvider:** Toàn bộ app được wrap bởi `ConfigProvider` với theme config (có thể toggle Dark Mode).
+2.  **App Component:** Wrap bởi `App` component từ AntD để sử dụng `message`, `notification`, `modal` static methods.
+3.  **CN Utility:** Sử dụng hàm `cn()` (clsx + tailwind-merge) để kết hợp Tailwind classes với AntD.
     ```tsx
-    <div className={cn("bg-red-500", className)}>...</div>
+    import { cn } from "@/lib/utils";
+    <Button className={cn("custom-tw-class", className)}>Click</Button>
     ```
-2.  **Composition:** Xây dựng UI phức tạp bằng cách kết hợp các Shadcn primitives nhỏ (Card, Dialog, ScrollArea).
+4.  **Theming:** Theme được cấu hình trong `lib/antd-config.ts` - customizable colors, fonts, sizes.
 
 ### C. Mô hình Real-time WebSocket
 
-1.  **Single Connection:** Duy trì một kết nối WebSocket duy nhất trong global context hoặc Zustand store (hoặc top-level hook).
+1.  **Single Connection:** Duy trì một kết nối WebSocket duy nhất trong Zustand store.
 2.  **Event Driven:** Sử dụng `useEffect` để lắng nghe `lastMessage` từ `react-use-websocket` và dispatch action vào store.
 3.  **Binary Frames:** Gửi dữ liệu audio dưới dạng `ArrayBuffer` (Int16 PCM). Nhận kết quả transcription dưới dạng JSON text.
 
@@ -143,4 +140,4 @@ frontend/
 ## 6. Tài liệu liên quan
 
 - **[Hợp đồng API & Quy trình tích hợp](contract-api.md):** Hướng dẫn chi tiết về cách dùng Hey-API, generate clients, và đồng bộ Backend/Frontend.
-- **[Design System & UI/UX](design-system.md):** Bảng màu, typography, và hướng dẫn sử dụng component Shadcn.
+- **[Ant Design Documentation](https://ant.design/components/overview/):** Official docs cho components và theming.
