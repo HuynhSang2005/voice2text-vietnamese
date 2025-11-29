@@ -4,23 +4,54 @@ import { z } from 'zod'
 
 /**
  * ModelInfo
+ *
+ * Information about an available STT model.
  */
 export const zModelInfo = z.object({
   id: z.string(),
   name: z.string(),
   description: z.string(),
+  workflow_type: z.optional(z.enum(['streaming', 'buffered'])),
+  expected_latency_ms: z
+    .optional(z.tuple([z.int(), z.int()]))
+    .default([100, 500]),
+})
+
+/**
+ * ModelStatus
+ *
+ * Current status of the model system.
+ */
+export const zModelStatus = z.object({
+  current_model: z.optional(z.union([z.string(), z.null()])),
+  is_loaded: z.boolean(),
+  status: z.string(),
+})
+
+/**
+ * SwitchModelResponse
+ *
+ * Response for model switch operation.
+ */
+export const zSwitchModelResponse = z.object({
+  status: z.string(),
+  current_model: z.string(),
 })
 
 /**
  * TranscriptionLog
+ *
+ * Database model for storing transcription history.
+ *
+ * Each record represents a transcription session (one recording session).
  */
 export const zTranscriptionLog = z.object({
   id: z.optional(z.union([z.int(), z.null()])),
   session_id: z.string(),
   model_id: z.string(),
   content: z.string(),
-  latency_ms: z.number(),
-  created_at: z.optional(z.iso.datetime()),
+  latency_ms: z.optional(z.number()).default(0),
+  created_at: z.optional(z.string()),
 })
 
 /**
@@ -40,6 +71,12 @@ export const zHttpValidationError = z.object({
 })
 
 export const zRootData = z.object({
+  body: z.optional(z.never()),
+  path: z.optional(z.never()),
+  query: z.optional(z.never()),
+})
+
+export const zHealthCheckData = z.object({
   body: z.optional(z.never()),
   path: z.optional(z.never()),
   query: z.optional(z.never()),
@@ -90,8 +127,18 @@ export const zSwitchModelData = z.object({
   }),
 })
 
+/**
+ * Successful Response
+ */
+export const zSwitchModelResponse2 = zSwitchModelResponse
+
 export const zGetModelStatusData = z.object({
   body: z.optional(z.never()),
   path: z.optional(z.never()),
   query: z.optional(z.never()),
 })
+
+/**
+ * Successful Response
+ */
+export const zGetModelStatusResponse = zModelStatus

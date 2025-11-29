@@ -8,7 +8,10 @@
     "serve": "vite preview",
     "lint": "eslint",
     "format": "prettier",
-    "gen:api": "openapi-ts"
+    "gen:api": "openapi-ts",
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build"
   },
   "dependencies": {
     "@ant-design/icons": "^6.1.0",
@@ -32,6 +35,7 @@
   "devDependencies": {
     "@hey-api/openapi-ts": "^0.88.0",
     "@tanstack/router-plugin": "^1.139.10",
+    "@tauri-apps/cli": "^2.9.4",
     "@types/node": "^22.10.2",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",

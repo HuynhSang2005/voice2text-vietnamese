@@ -1,5 +1,4 @@
 import type { ThemeConfig } from 'antd'
-import { theme } from 'antd'
 
 // Re-export ThemeConfig for use in other files
 export type { ThemeConfig }
@@ -7,14 +6,14 @@ export type { ThemeConfig }
 /**
  * Ant Design 6.0 Theme Configuration
  * - CSS-in-JS with design tokens
- * - Dark/Light mode support via algorithm
+ * - Light mode only
  * - Component-level customization
  */
 
 // Light theme configuration
 export const lightTheme: ThemeConfig = {
   token: {
-    // Primary color - customize as needed
+    // Primary color - blue
     colorPrimary: '#1677ff',
     
     // Border radius
@@ -38,39 +37,9 @@ export const lightTheme: ThemeConfig = {
     Select: {
       algorithm: true,
     },
-  },
-}
-
-// Dark theme configuration
-export const darkTheme: ThemeConfig = {
-  algorithm: theme.darkAlgorithm,
-  token: {
-    colorPrimary: '#1677ff',
-    borderRadius: 6,
-    fontSize: 14,
-    fontFamily:
-      "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif",
-    controlHeight: 32,
-  },
-  components: {
-    Button: {
+    Menu: {
       algorithm: true,
     },
-    Input: {
-      algorithm: true,
-    },
-    Select: {
-      algorithm: true,
-    },
-  },
-}
-
-// Compact theme (can be combined with dark)
-export const compactTheme: ThemeConfig = {
-  algorithm: theme.compactAlgorithm,
-  token: {
-    colorPrimary: '#1677ff',
-    borderRadius: 4,
   },
 }
 

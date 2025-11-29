@@ -1,8 +1,8 @@
+import { Suspense } from 'react'
 import { createRootRoute, Outlet } from '@tanstack/react-router'
 import { TanStackRouterDevtools } from '@tanstack/react-router-devtools'
-import { Layout } from 'antd'
-
-const { Content } = Layout
+import { AppLayout } from '@/components/layout'
+import { PageLoadingSkeleton } from '@/components/common'
 
 export const Route = createRootRoute({
   component: RootLayout,
@@ -10,11 +10,11 @@ export const Route = createRootRoute({
 
 function RootLayout() {
   return (
-    <Layout className="min-h-screen">
-      <Content>
+    <AppLayout>
+      <Suspense fallback={<PageLoadingSkeleton />}>
         <Outlet />
-      </Content>
-      <TanStackRouterDevtools />
-    </Layout>
+      </Suspense>
+      {import.meta.env.DEV && <TanStackRouterDevtools />}
+    </AppLayout>
   )
 }

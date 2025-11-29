@@ -1,9 +1,11 @@
 import type { ReactNode } from 'react'
 import { ConfigProvider, App } from 'antd'
+import type { MessageInstance } from 'antd/es/message/interface'
+import type { NotificationInstance } from 'antd/es/notification/interface'
+import type { ModalStaticFunctions } from 'antd/es/modal/confirm'
 import enUS from 'antd/locale/en_US'
 import viVN from 'antd/locale/vi_VN'
-import { defaultTheme, darkTheme, type ThemeConfig } from './antd-config'
-import { useAppStore } from '@/stores/app.store'
+import { defaultTheme, type ThemeConfig } from './antd-config'
 
 interface AntdProviderProps {
   children: ReactNode
@@ -31,15 +33,30 @@ interface AntdProviderProps {
  * }
  * ```
  */
+
+// Static instances for use outside of React components
+let staticMessage: MessageInstance
+let staticNotification: NotificationInstance
+let staticModal: Omit<ModalStaticFunctions, 'warn'>
+
+export function getStaticInstance() {
+  return { message: staticMessage, notification: staticNotification, modal: staticModal }
+}
+
+function StaticInstanceProvider({ children }: { children: ReactNode }) {
+  const { message, notification, modal } = App.useApp()
+  staticMessage = message
+  staticNotification = notification
+  staticModal = modal
+  return <>{children}</>
+}
+
 export function AntdProvider({ 
   children, 
   locale = 'vi',
   theme: customTheme 
 }: AntdProviderProps) {
-  // Get theme preference from store if needed
-  const isDarkMode = useAppStore((state) => state.isDarkMode)
-  
-  const currentTheme = customTheme ?? (isDarkMode ? darkTheme : defaultTheme)
+  const currentTheme = customTheme ?? defaultTheme
   const currentLocale = locale === 'vi' ? viVN : enUS
 
   return (
@@ -48,7 +65,21 @@ export function AntdProvider({
       locale={currentLocale}
       componentSize="middle"
     >
-      <App>{children}</App>
+      <App
+        message={{
+          maxCount: 3,
+          duration: 3,
+        }}
+        notification={{
+          placement: 'topRight',
+          duration: 4,
+          maxCount: 3,
+        }}
+      >
+        <StaticInstanceProvider>
+          {children}
+        </StaticInstanceProvider>
+      </App>
     </ConfigProvider>
   )
 }

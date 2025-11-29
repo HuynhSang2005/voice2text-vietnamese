@@ -10,6 +10,8 @@ import type {
   GetModelsResponses,
   GetModelStatusData,
   GetModelStatusResponses,
+  HealthCheckData,
+  HealthCheckResponses,
   RootData,
   RootResponses,
   SwitchModelData,
@@ -22,8 +24,11 @@ import {
   zGetModelsData,
   zGetModelsResponse,
   zGetModelStatusData,
+  zGetModelStatusResponse,
+  zHealthCheckData,
   zRootData,
   zSwitchModelData,
+  zSwitchModelResponse2,
 } from './zod.gen'
 
 export type Options<
@@ -45,6 +50,8 @@ export type Options<
 
 /**
  * Root
+ *
+ * Health check endpoint.
  */
 export const root = <ThrowOnError extends boolean = false>(
   options?: Options<RootData, ThrowOnError>,
@@ -56,9 +63,23 @@ export const root = <ThrowOnError extends boolean = false>(
   })
 
 /**
- * Get Models
+ * Health Check
  *
- * List available speech-to-text models.
+ * Detailed health check.
+ */
+export const healthCheck = <ThrowOnError extends boolean = false>(
+  options?: Options<HealthCheckData, ThrowOnError>,
+) =>
+  (options?.client ?? client).get<HealthCheckResponses, unknown, ThrowOnError>({
+    requestValidator: async (data) => await zHealthCheckData.parseAsync(data),
+    url: '/health',
+    ...options,
+  })
+
+/**
+ * List available models
+ *
+ * List available speech-to-text models with their capabilities.
  */
 export const getModels = <ThrowOnError extends boolean = false>(
   options?: Options<GetModelsData, ThrowOnError>,
@@ -72,9 +93,16 @@ export const getModels = <ThrowOnError extends boolean = false>(
   })
 
 /**
- * Get History
+ * Get transcription history
  *
  * Get transcription history with filtering and pagination.
+ *
+ * - **page**: Page number (1-indexed)
+ * - **limit**: Number of items per page (max 100)
+ * - **search**: Search in transcription content
+ * - **model**: Filter by model ID
+ * - **min_latency/max_latency**: Filter by latency range
+ * - **start_date/end_date**: Filter by date range
  */
 export const getHistory = <ThrowOnError extends boolean = false>(
   options?: Options<GetHistoryData, ThrowOnError>,
@@ -92,9 +120,11 @@ export const getHistory = <ThrowOnError extends boolean = false>(
   })
 
 /**
- * Switch Model
+ * Switch active model
  *
- * Manually switch model via REST (optional, mostly for testing).
+ * Manually switch the active model.
+ *
+ * Available models: zipformer, faster-whisper, phowhisper, hkab
  */
 export const switchModel = <ThrowOnError extends boolean = false>(
   options: Options<SwitchModelData, ThrowOnError>,
@@ -105,12 +135,14 @@ export const switchModel = <ThrowOnError extends boolean = false>(
     ThrowOnError
   >({
     requestValidator: async (data) => await zSwitchModelData.parseAsync(data),
-    url: '/models/switch',
+    responseValidator: async (data) =>
+      await zSwitchModelResponse2.parseAsync(data),
+    url: '/api/v1/models/switch',
     ...options,
   })
 
 /**
- * Get Model Status
+ * Get model status
  *
  * Get the status of the currently loaded model.
  */
@@ -124,6 +156,8 @@ export const getModelStatus = <ThrowOnError extends boolean = false>(
   >({
     requestValidator: async (data) =>
       await zGetModelStatusData.parseAsync(data),
+    responseValidator: async (data) =>
+      await zGetModelStatusResponse.parseAsync(data),
     url: '/api/v1/models/status',
     ...options,
   })

@@ -16,6 +16,8 @@ export type HttpValidationError = {
 
 /**
  * ModelInfo
+ *
+ * Information about an available STT model.
  */
 export type ModelInfo = {
   /**
@@ -30,10 +32,58 @@ export type ModelInfo = {
    * Description
    */
   description: string
+  /**
+   * Workflow Type
+   */
+  workflow_type?: 'streaming' | 'buffered'
+  /**
+   * Expected Latency Ms
+   */
+  expected_latency_ms?: [number, number]
+}
+
+/**
+ * ModelStatus
+ *
+ * Current status of the model system.
+ */
+export type ModelStatus = {
+  /**
+   * Current Model
+   */
+  current_model?: string | null
+  /**
+   * Is Loaded
+   */
+  is_loaded: boolean
+  /**
+   * Status
+   */
+  status: string
+}
+
+/**
+ * SwitchModelResponse
+ *
+ * Response for model switch operation.
+ */
+export type SwitchModelResponse = {
+  /**
+   * Status
+   */
+  status: string
+  /**
+   * Current Model
+   */
+  current_model: string
 }
 
 /**
  * TranscriptionLog
+ *
+ * Database model for storing transcription history.
+ *
+ * Each record represents a transcription session (one recording session).
  */
 export type TranscriptionLog = {
   /**
@@ -42,22 +92,32 @@ export type TranscriptionLog = {
   id?: number | null
   /**
    * Session Id
+   *
+   * Unique session identifier
    */
   session_id: string
   /**
    * Model Id
+   *
+   * Model used for transcription
    */
   model_id: string
   /**
    * Content
+   *
+   * Transcribed text content
    */
   content: string
   /**
    * Latency Ms
+   *
+   * Processing latency in milliseconds
    */
-  latency_ms: number
+  latency_ms?: number
   /**
    * Created At
+   *
+   * Timestamp of creation
    */
   created_at?: string
 }
@@ -88,6 +148,20 @@ export type RootData = {
 }
 
 export type RootResponses = {
+  /**
+   * Successful Response
+   */
+  200: unknown
+}
+
+export type HealthCheckData = {
+  body?: never
+  path?: never
+  query?: never
+  url: '/health'
+}
+
+export type HealthCheckResponses = {
   /**
    * Successful Response
    */
@@ -181,7 +255,7 @@ export type SwitchModelData = {
      */
     model: string
   }
-  url: '/models/switch'
+  url: '/api/v1/models/switch'
 }
 
 export type SwitchModelErrors = {
@@ -205,8 +279,11 @@ export type SwitchModelResponses = {
   /**
    * Successful Response
    */
-  200: unknown
+  200: SwitchModelResponse
 }
+
+export type SwitchModelResponse2 =
+  SwitchModelResponses[keyof SwitchModelResponses]
 
 export type GetModelStatusData = {
   body?: never
@@ -219,5 +296,8 @@ export type GetModelStatusResponses = {
   /**
    * Successful Response
    */
-  200: unknown
+  200: ModelStatus
 }
+
+export type GetModelStatusResponse =
+  GetModelStatusResponses[keyof GetModelStatusResponses]
