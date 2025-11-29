@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import uuid
 from typing import List, Any
 from datetime import datetime
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, HTTPException, status
@@ -20,10 +21,34 @@ router = APIRouter(tags=["Speech-to-Text"])
 async def get_models():
     """List available speech-to-text models with their capabilities."""
     return [
-        ModelInfo(id="zipformer", name="Zipformer (Offline)", description="High accuracy, offline processing"),
-        ModelInfo(id="faster-whisper", name="Faster Whisper (Buffered)", description="High accuracy, buffered processing"),
-        ModelInfo(id="phowhisper", name="PhoWhisper (Buffered)", description="Vietnamese optimized Whisper"),
-        ModelInfo(id="hkab", name="HKAB (Streaming)", description="Experimental Streaming RNN-T"),
+        ModelInfo(
+            id="zipformer", 
+            name="Zipformer", 
+            description="Real-time streaming, optimized for Vietnamese (6000h trained)",
+            workflow_type="streaming",
+            expected_latency_ms=(100, 500)
+        ),
+        ModelInfo(
+            id="faster-whisper", 
+            name="Faster Whisper", 
+            description="High accuracy, buffered processing with VAD",
+            workflow_type="buffered",
+            expected_latency_ms=(2000, 8000)
+        ),
+        ModelInfo(
+            id="phowhisper", 
+            name="PhoWhisper", 
+            description="Vietnamese optimized Whisper from VinAI",
+            workflow_type="buffered",
+            expected_latency_ms=(2000, 8000)
+        ),
+        ModelInfo(
+            id="hkab", 
+            name="HKAB", 
+            description="Community RNN-T model, real-time streaming",
+            workflow_type="streaming",
+            expected_latency_ms=(100, 500)
+        ),
     ]
 
 @router.get("/api/v1/history", response_model=List[TranscriptionLog], summary="Get transcription history")
@@ -84,7 +109,9 @@ async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     
     model_name = "zipformer"  # Default
-    session_id = str(id(websocket))
+    # Session ID will be set by client via start_session message
+    # Fallback to None until client sends session ID
+    session_id = None
     
     try:
         # 1. Wait for config message (Optional, or first message)
@@ -150,6 +177,11 @@ async def websocket_endpoint(websocket: WebSocket):
                                     logger.info(f"Starting new session: {session_id}")
                                     await asyncio.to_thread(input_q.put, {"reset": True})
                                     
+                            elif msg_type == "flush":
+                                # Signal worker to force transcribe remaining buffer
+                                logger.info("Received flush signal - forcing transcription of remaining buffer")
+                                await asyncio.to_thread(input_q.put, {"flush": True})
+                                    
                         except json.JSONDecodeError as e:
                             logger.warning(f"Invalid JSON message: {e}")
                             
@@ -160,10 +192,25 @@ async def websocket_endpoint(websocket: WebSocket):
                     logger.error(f"RuntimeError receiving audio: {e}")
             except Exception as e:
                 logger.error(f"Error receiving audio: {e}", exc_info=True)
+            finally:
+                # Signal that receive has ended - send_results should wait for pending results
+                # DON'T set ws_closed here - let send_results drain the queue first
+                receive_ended.set()
+                logger.info("Receive ended, send_results will drain remaining queue")
 
+        # Flag to signal when receive_audio has ended
+        receive_ended = asyncio.Event()
+        
+        # Track WebSocket connection state
+        ws_closed = asyncio.Event()
+        
         async def send_results():
             try:
                 result_count = 0
+                # Keep running until receive ended AND queue is empty for a while
+                empty_checks = 0
+                max_empty_checks = 200  # 200 * 50ms = 10s max wait after receive ends (for slow Whisper)
+                
                 while True:
                     # Use asyncio.to_thread for blocking Queue operations
                     try:
@@ -172,40 +219,66 @@ async def websocket_endpoint(websocket: WebSocket):
                         if not is_empty:
                             result = await asyncio.to_thread(output_q.get_nowait)
                             result_count += 1
+                            empty_checks = 0  # Reset counter when we get data
                             
-                            await websocket.send_json(result)
+                            # Check WebSocket state before sending (only set on send error)
+                            if ws_closed.is_set():
+                                logger.debug("WebSocket already closed, discarding result")
+                                continue  # Continue to drain queue for DB save
+                                
+                            try:
+                                await websocket.send_json(result)
+                                logger.info(f"Sent result #{result_count} to client: '{result.get('text', '')[:50]}...'")
+                            except Exception as send_err:
+                                logger.warning(f"Failed to send result (client disconnected): {send_err}")
+                                ws_closed.set()  # Mark WebSocket as closed on send error
                             
-                            # Save to DB with fresh session (avoid session expiry)
+                            # Save to DB only if we have a session ID from client
                             text_content = result.get("text", "").strip()
-                            if text_content:
+                            latency_ms = result.get("latency_ms", 0.0)
+                            workflow_type = result.get("workflow_type", "buffered")  # Default to buffered for backwards compat
+                            if text_content and session_id:
                                 await _save_transcription(
                                     session_id=session_id,
                                     model_id=model_name,
-                                    content=text_content
+                                    content=text_content,
+                                    latency_ms=latency_ms,
+                                    workflow_type=workflow_type
                                 )
                         else:
-                            await asyncio.sleep(0.02)  # 20ms polling interval
+                            # Queue is empty
+                            if receive_ended.is_set():
+                                empty_checks += 1
+                                if empty_checks >= max_empty_checks:
+                                    logger.info(f"Receive ended and queue empty for {empty_checks * 50}ms, closing send_results")
+                                    break
+                            await asyncio.sleep(0.05)  # 50ms polling interval
                             
                     except Exception as e:
                         if "Empty" not in str(type(e).__name__):
                             logger.error(f"Error in send_results: {e}")
-                        await asyncio.sleep(0.02)
+                        await asyncio.sleep(0.05)
                         
             except Exception as e:
                 logger.error(f"Error sending results: {e}", exc_info=True)
 
         # Run both tasks concurrently
-        tasks = [
-            asyncio.create_task(receive_audio()),
-            asyncio.create_task(send_results())
-        ]
-        done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+        receive_task = asyncio.create_task(receive_audio())
+        send_task = asyncio.create_task(send_results())
         
-        # Cancel pending tasks
-        for task in pending:
-            task.cancel()
+        # Wait for receive to finish first (client disconnect or error)
+        await receive_task
+        
+        # Now wait for send_results to drain the queue (with timeout)
+        try:
+            # Give send_results up to 15 seconds to drain remaining results (Whisper can be slow)
+            await asyncio.wait_for(send_task, timeout=15.0)
+            logger.info("send_results completed successfully")
+        except asyncio.TimeoutError:
+            logger.warning("send_results timed out after 15s, cancelling")
+            send_task.cancel()
             try:
-                await task
+                await send_task
             except asyncio.CancelledError:
                 pass
             
@@ -215,8 +288,19 @@ async def websocket_endpoint(websocket: WebSocket):
         logger.error(f"WebSocket error: {e}", exc_info=True)
 
 
-async def _save_transcription(session_id: str, model_id: str, content: str):
-    """Save transcription to database with fresh session."""
+async def _save_transcription(
+    session_id: str, 
+    model_id: str, 
+    content: str, 
+    latency_ms: float = 0.0,
+    workflow_type: str = "buffered"
+):
+    """Save transcription to database with fresh session.
+    
+    Behavior depends on workflow_type:
+    - "streaming" (Zipformer, HKAB): REPLACE content (each result contains full transcription)
+    - "buffered" (Whisper, PhoWhisper): APPEND content (each result is a new chunk)
+    """
     from sqlalchemy.orm import sessionmaker
     
     async_session = sessionmaker(
@@ -230,16 +314,31 @@ async def _save_transcription(session_id: str, model_id: str, content: str):
             existing_log = (await session.exec(statement)).first()
             
             if existing_log:
-                existing_log.content = content
+                if workflow_type == "streaming":
+                    # REPLACE: Streaming models send cumulative text
+                    existing_log.content = content
+                    logger.debug(f"Replaced transcription for session {session_id}: '{content[:30]}...'")
+                else:
+                    # APPEND: Buffered models send separate chunks
+                    if existing_log.content and content:
+                        existing_log.content = f"{existing_log.content} {content}"
+                    elif content:
+                        existing_log.content = content
+                    logger.debug(f"Appended transcription to session {session_id}: '{content[:30]}...'")
+                    
+                # Keep max latency for the session
+                if latency_ms > existing_log.latency_ms:
+                    existing_log.latency_ms = latency_ms
                 session.add(existing_log)
             else:
                 db_log = TranscriptionLog(
                     session_id=session_id,
                     model_id=model_id,
                     content=content,
-                    latency_ms=0.0,
+                    latency_ms=latency_ms,
                 )
                 session.add(db_log)
+                logger.debug(f"Created new transcription for session {session_id}")
             await session.commit()
         except Exception as e:
             logger.error(f"Failed to save transcription: {e}")
@@ -277,10 +376,11 @@ def switch_model(model: str):
 async def get_model_status():
     """Get the status of the currently loaded model."""
     current_model = manager.current_model
-    is_loaded = current_model is not None and current_model in manager.active_processes
+    loading_model = manager.loading_model
+    status = manager.get_status()
     
     return ModelStatus(
-        current_model=current_model,
-        is_loaded=is_loaded,
-        status="ready" if is_loaded else "idle"
+        current_model=loading_model if status == "loading" else current_model,
+        is_loaded=status == "ready",
+        status=status
     )

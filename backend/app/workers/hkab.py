@@ -1,5 +1,6 @@
 import os
 import sys
+import time
 import numpy as np
 
 from app.workers.base import BaseWorker
@@ -17,7 +18,12 @@ TOKENIZER_MODEL_PATH = "utils/tokenizer_spe_bpe_v1024_pad/tokenizer.model"
 
 
 class HKABWorker(BaseWorker):
-    """Worker for HKAB RNN-Transducer model using ONNX Runtime."""
+    """Worker for HKAB RNN-Transducer model using ONNX Runtime.
+    
+    HKAB is a streaming RNN-T model that produces incremental results.
+    To avoid flooding the client with duplicate results, we only send updates
+    when the transcription text actually changes.
+    """
     
     def load_model(self):
         import sentencepiece as spm
@@ -80,6 +86,7 @@ class HKABWorker(BaseWorker):
         
         self.seq_ids = []
         self.input_buffer = np.array([], dtype=np.float32)
+        self.last_text = ""  # Track last sent text for deduplication
 
     def _get_input_name(self, names: list, base: str) -> str:
         """Find matching input name (handles ONNX name suffixes)."""
@@ -92,6 +99,8 @@ class HKABWorker(BaseWorker):
         if not hasattr(self, 'encoder_sess'):
             return
 
+        force_output = False
+        
         if isinstance(item, dict):
             audio_data = item.get("audio")
             if item.get("reset"):
@@ -99,10 +108,17 @@ class HKABWorker(BaseWorker):
                 self._reset_state()
                 if not audio_data:
                     return
+            if item.get("flush"):
+                # Force output remaining result and reset state
+                self.logger.info("Flush signal received - outputting final result")
+                force_output = True
         else:
             audio_data = item
 
         if audio_data:
+            # Start timing for latency measurement
+            start_time = time.perf_counter()
+            
             # Convert bytes to float32
             samples = np.frombuffer(audio_data, dtype=np.int16).astype(np.float32) / 32768.0
             self.input_buffer = np.concatenate((self.input_buffer, samples))
@@ -175,11 +191,32 @@ class HKABWorker(BaseWorker):
                             self.h_n = new_h_n
                             self.seq_ids.append(new_token)
                             
-            # Send partial result
+            # Send partial result only if text has changed (deduplication)
             if self.seq_ids:
                 current_text = self.tokenizer.decode(self.seq_ids)
-                self.output_queue.put({
-                    "text": current_text,
-                    "is_final": False,
-                    "model": "hkab"
-                })
+                if current_text and current_text != self.last_text:
+                    self.last_text = current_text
+                    latency_ms = (time.perf_counter() - start_time) * 1000
+                    self.output_queue.put({
+                        "text": current_text,
+                        "is_final": False,
+                        "model": "hkab",
+                        "workflow_type": "streaming",  # Streaming = text contains full transcription
+                        "latency_ms": round(latency_ms, 2)
+                    })
+        
+        # Handle flush: output final result and reset state
+        if force_output and self.seq_ids:
+            current_text = self.tokenizer.decode(self.seq_ids)
+            self.output_queue.put({
+                "text": current_text,
+                "is_final": True,  # Mark as final on flush
+                "model": "hkab",
+                "workflow_type": "streaming",  # Streaming = text contains full transcription
+                "latency_ms": 0
+            })
+            self.logger.info(f"Flush output: '{current_text[:50]}...'")
+            
+            # Reset state to prevent accumulation in next session
+            self._reset_state()
+            self.logger.debug("State reset after flush")

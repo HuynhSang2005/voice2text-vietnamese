@@ -1,5 +1,6 @@
 import logging
 import multiprocessing
+import threading
 from typing import Dict, Optional, Tuple
 from app.workers.base import BaseWorker
 
@@ -21,6 +22,31 @@ class ModelManager:
         self.input_queues: Dict[str, multiprocessing.Queue] = {}
         self.output_queues: Dict[str, multiprocessing.Queue] = {}
         self.current_model: Optional[str] = None
+        # Track loading state
+        self._loading_model: Optional[str] = None
+        self._loading_lock = threading.Lock()
+
+    @property
+    def is_loading(self) -> bool:
+        """Check if a model is currently being loaded."""
+        with self._loading_lock:
+            return self._loading_model is not None
+
+    @property
+    def loading_model(self) -> Optional[str]:
+        """Get the name of the model currently being loaded."""
+        with self._loading_lock:
+            return self._loading_model
+
+    def get_status(self) -> str:
+        """Get the current status of the model manager."""
+        with self._loading_lock:
+            if self._loading_model:
+                return "loading"
+            elif self.current_model and self.current_model in self.active_processes:
+                return "ready"
+            else:
+                return "idle"
 
     def start_model(self, model_name: str) -> None:
         """Start a model worker process."""
@@ -31,27 +57,36 @@ class ModelManager:
             logger.debug(f"Model {model_name} already running")
             return
 
-        self.stop_current_model()
+        # Set loading state
+        with self._loading_lock:
+            self._loading_model = model_name
 
-        logger.info(f"Starting model: {model_name}")
-        input_q = multiprocessing.Queue(maxsize=100)  # Limit queue size
-        output_q = multiprocessing.Queue(maxsize=100)
-        
-        worker_class = self._get_worker_class(model_name)
-        if not worker_class:
-            raise ValueError(f"No worker implementation for model: {model_name}")
-        
-        worker = worker_class(input_q, output_q, model_name)
-        
-        process = multiprocessing.Process(target=worker.run, daemon=True)
-        process.start()
-        
-        self.active_processes[model_name] = process
-        self.input_queues[model_name] = input_q
-        self.output_queues[model_name] = output_q
-        self.current_model = model_name
-        
-        logger.info(f"Model {model_name} started (PID: {process.pid})")
+        try:
+            self.stop_current_model()
+
+            logger.info(f"Starting model: {model_name}")
+            input_q = multiprocessing.Queue(maxsize=100)  # Limit queue size
+            output_q = multiprocessing.Queue(maxsize=100)
+            
+            worker_class = self._get_worker_class(model_name)
+            if not worker_class:
+                raise ValueError(f"No worker implementation for model: {model_name}")
+            
+            worker = worker_class(input_q, output_q, model_name)
+            
+            process = multiprocessing.Process(target=worker.run, daemon=True)
+            process.start()
+            
+            self.active_processes[model_name] = process
+            self.input_queues[model_name] = input_q
+            self.output_queues[model_name] = output_q
+            self.current_model = model_name
+            
+            logger.info(f"Model {model_name} started (PID: {process.pid})")
+        finally:
+            # Clear loading state
+            with self._loading_lock:
+                self._loading_model = None
 
     def stop_current_model(self) -> None:
         """Stop the currently running model worker."""

@@ -1,4 +1,5 @@
 import os
+import time
 import numpy as np
 
 from app.workers.base import BaseWorker
@@ -6,7 +7,12 @@ from app.core.config import settings
 
 
 class ZipformerWorker(BaseWorker):
-    """Worker for Zipformer (RNN-T) model using sherpa-onnx."""
+    """Worker for Zipformer (RNN-T) model using sherpa-onnx.
+    
+    Zipformer is a streaming RNN-T model that produces incremental results.
+    To avoid flooding the client with duplicate results, we only send updates
+    when the transcription text actually changes.
+    """
     
     def load_model(self):
         import sherpa_onnx
@@ -40,6 +46,7 @@ class ZipformerWorker(BaseWorker):
             
             self.recognizer = recognizer
             self.stream = recognizer.create_stream()
+            self.last_text = ""  # Track last sent text for deduplication
             self.logger.info("Zipformer model loaded successfully")
             
         except Exception as e:
@@ -60,17 +67,27 @@ class ZipformerWorker(BaseWorker):
         if not self.recognizer:
             return
 
+        force_output = False
+        
         if isinstance(item, dict):
             audio_data = item.get("audio")
             if item.get("reset"):
                 self.logger.debug("Resetting stream for new session")
                 self.stream = self.recognizer.create_stream()
+                self.last_text = ""  # Reset deduplication tracker
                 if not audio_data:
                     return
+            if item.get("flush"):
+                # Force output remaining result and reset stream
+                self.logger.info("Flush signal received - outputting final result")
+                force_output = True
         else:
             audio_data = item
 
         if audio_data:
+            # Start timing for latency measurement
+            start_time = time.perf_counter()
+            
             # Convert bytes (int16) to float32 normalized
             samples = np.frombuffer(audio_data, dtype=np.int16)
             samples = samples.astype(np.float32) / 32768.0
@@ -78,13 +95,42 @@ class ZipformerWorker(BaseWorker):
             self.stream.accept_waveform(16000, samples)
             self.recognizer.decode_stream(self.stream)
             
+            # Calculate processing latency
+            latency_ms = (time.perf_counter() - start_time) * 1000
+            
             raw_text = self.stream.result.text
             formatted_text = self.format_vietnamese_text(raw_text)
             
-            result = {
-                "text": formatted_text,
-                "is_final": False,
-                "model": "zipformer"
-            }
+            # Only send result if text has actually changed (deduplication)
+            if formatted_text and formatted_text != self.last_text:
+                self.last_text = formatted_text
+                result = {
+                    "text": formatted_text,
+                    "is_final": False,
+                    "model": "zipformer",
+                    "workflow_type": "streaming",  # Streaming = text contains full transcription
+                    "latency_ms": round(latency_ms, 2)
+                }
+                
+                self.output_queue.put(result)
+        
+        # Handle flush: output final result and reset stream
+        if force_output:
+            raw_text = self.stream.result.text
+            formatted_text = self.format_vietnamese_text(raw_text)
             
-            self.output_queue.put(result)
+            if formatted_text:
+                result = {
+                    "text": formatted_text,
+                    "is_final": True,  # Mark as final on flush
+                    "model": "zipformer",
+                    "workflow_type": "streaming",  # Streaming = text contains full transcription
+                    "latency_ms": 0
+                }
+                self.output_queue.put(result)
+                self.logger.info(f"Flush output: '{formatted_text[:50]}...'")
+            
+            # Reset stream and last_text to prevent accumulation in next session
+            self.stream = self.recognizer.create_stream()
+            self.last_text = ""
+            self.logger.debug("Stream reset after flush")
