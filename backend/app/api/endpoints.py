@@ -1,8 +1,7 @@
 import asyncio
 import json
 import logging
-import uuid
-from typing import List, Any
+from typing import List
 from datetime import datetime
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, HTTPException, status
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -25,27 +24,6 @@ async def get_models():
             id="zipformer", 
             name="Zipformer", 
             description="Real-time streaming, optimized for Vietnamese (6000h trained)",
-            workflow_type="streaming",
-            expected_latency_ms=(100, 500)
-        ),
-        ModelInfo(
-            id="faster-whisper", 
-            name="Faster Whisper", 
-            description="High accuracy, buffered processing with VAD",
-            workflow_type="buffered",
-            expected_latency_ms=(2000, 8000)
-        ),
-        ModelInfo(
-            id="phowhisper", 
-            name="PhoWhisper", 
-            description="Vietnamese optimized Whisper from VinAI",
-            workflow_type="buffered",
-            expected_latency_ms=(2000, 8000)
-        ),
-        ModelInfo(
-            id="hkab", 
-            name="HKAB", 
-            description="Community RNN-T model, real-time streaming",
             workflow_type="streaming",
             expected_latency_ms=(100, 500)
         ),
@@ -209,7 +187,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 result_count = 0
                 # Keep running until receive ended AND queue is empty for a while
                 empty_checks = 0
-                max_empty_checks = 200  # 200 * 50ms = 10s max wait after receive ends (for slow Whisper)
+                max_empty_checks = 200  # 200 * 50ms = 10s max wait after receive ends
                 
                 while True:
                     # Use asyncio.to_thread for blocking Queue operations
@@ -236,7 +214,7 @@ async def websocket_endpoint(websocket: WebSocket):
                             # Save to DB only if we have a session ID from client
                             text_content = result.get("text", "").strip()
                             latency_ms = result.get("latency_ms", 0.0)
-                            workflow_type = result.get("workflow_type", "buffered")  # Default to buffered for backwards compat
+                            workflow_type = result.get("workflow_type", "streaming")  # Default to streaming for zipformer
                             if text_content and session_id:
                                 await _save_transcription(
                                     session_id=session_id,
@@ -271,7 +249,7 @@ async def websocket_endpoint(websocket: WebSocket):
         
         # Now wait for send_results to drain the queue (with timeout)
         try:
-            # Give send_results up to 15 seconds to drain remaining results (Whisper can be slow)
+            # Give send_results up to 15 seconds to drain remaining results
             await asyncio.wait_for(send_task, timeout=15.0)
             logger.info("send_results completed successfully")
         except asyncio.TimeoutError:
@@ -293,13 +271,11 @@ async def _save_transcription(
     model_id: str, 
     content: str, 
     latency_ms: float = 0.0,
-    workflow_type: str = "buffered"
+    workflow_type: str = "streaming"
 ):
     """Save transcription to database with fresh session.
     
-    Behavior depends on workflow_type:
-    - "streaming" (Zipformer, HKAB): REPLACE content (each result contains full transcription)
-    - "buffered" (Whisper, PhoWhisper): APPEND content (each result is a new chunk)
+    For streaming workflow (Zipformer): REPLACE content (each result contains full transcription)
     """
     from sqlalchemy.orm import sessionmaker
     
@@ -355,9 +331,9 @@ def switch_model(model: str):
     """
     Manually switch the active model.
     
-    Available models: zipformer, faster-whisper, phowhisper, hkab
+    Available models: zipformer
     """
-    valid_models = ["zipformer", "faster-whisper", "phowhisper", "hkab"]
+    valid_models = ["zipformer"]
     if model not in valid_models:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, 

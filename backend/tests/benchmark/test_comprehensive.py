@@ -1,5 +1,5 @@
 """
-Comprehensive benchmark tests for STT models.
+Comprehensive benchmark tests for Zipformer STT model.
 
 Measures:
 - Model load time
@@ -20,8 +20,6 @@ import multiprocessing
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 
 from app.workers.zipformer import ZipformerWorker
-from app.workers.whisper import WhisperWorker
-from app.workers.hkab import HKABWorker
 from app.core.config import settings
 
 
@@ -77,7 +75,7 @@ def benchmark_file():
     """Initialize benchmark results file."""
     with open(RESULTS_FILE, "w", encoding="utf-8") as f:
         f.write(f"=" * 60 + "\n")
-        f.write(f"STT Model Benchmark Results\n")
+        f.write(f"Zipformer STT Model Benchmark Results\n")
         f.write(f"Date: {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
         f.write(f"=" * 60 + "\n\n")
     yield RESULTS_FILE
@@ -127,66 +125,10 @@ Memory Total: {mem_after:.2f} MB
             
         except FileNotFoundError:
             pytest.skip("Zipformer model files not found")
-    
-    @pytest.mark.benchmark
-    @pytest.mark.slow
-    def test_whisper_load_time(self, benchmark_file, queues):
-        """Benchmark Whisper model load time and memory."""
-        input_q, output_q = queues
-        worker = WhisperWorker(input_q, output_q, "faster-whisper")
-        
-        mem_before = get_memory_usage_mb()
-        start = time.time()
-        
-        try:
-            worker.load_model()
-            load_time = time.time() - start
-            mem_after = get_memory_usage_mb()
-            
-            result = f"""
---- Faster-Whisper Load Benchmark ---
-Load Time: {load_time:.2f}s
-Memory Delta: {mem_after - mem_before:.2f} MB
-Memory Total: {mem_after:.2f} MB
-"""
-            write_result(result)
-            
-            assert load_time < 60.0, "Whisper load too slow"
-            
-        except Exception as e:
-            pytest.skip(f"Whisper model load failed: {e}")
-    
-    @pytest.mark.benchmark
-    @pytest.mark.slow
-    def test_hkab_load_time(self, benchmark_file, queues):
-        """Benchmark HKAB model load time and memory."""
-        input_q, output_q = queues
-        worker = HKABWorker(input_q, output_q, "hkab")
-        
-        mem_before = get_memory_usage_mb()
-        start = time.time()
-        
-        try:
-            worker.load_model()
-            load_time = time.time() - start
-            mem_after = get_memory_usage_mb()
-            
-            result = f"""
---- HKAB Load Benchmark ---
-Load Time: {load_time:.2f}s
-Memory Delta: {mem_after - mem_before:.2f} MB
-Memory Total: {mem_after:.2f} MB
-"""
-            write_result(result)
-            
-            assert load_time < 30.0, "HKAB load too slow"
-            
-        except FileNotFoundError:
-            pytest.skip("HKAB model files not found")
 
 
 class TestInferenceLatencyBenchmark:
-    """Benchmark inference latency for each model."""
+    """Benchmark inference latency for Zipformer model."""
     
     @pytest.mark.benchmark
     @pytest.mark.slow
@@ -215,32 +157,6 @@ class TestInferenceLatencyBenchmark:
             
         except FileNotFoundError:
             pytest.skip("Zipformer model files not found")
-    
-    @pytest.mark.benchmark
-    @pytest.mark.slow
-    @pytest.mark.parametrize("duration", [5.0])  # Only test longer durations for Whisper
-    def test_whisper_inference(self, benchmark_file, queues, duration):
-        """Benchmark Whisper inference latency."""
-        input_q, output_q = queues
-        worker = WhisperWorker(input_q, output_q, "faster-whisper")
-        
-        try:
-            worker.load_model()
-            
-            # Generate audio longer than MAX_DURATION to trigger transcription
-            audio_data = generate_test_audio(duration + 11)  # > 15s total
-            
-            start = time.time()
-            worker.process(audio_data)
-            latency = time.time() - start
-            
-            rtf = latency / duration if duration > 0 else 0
-            
-            result = f"Whisper {duration}s audio: latency={latency:.3f}s, RTF={rtf:.3f}"
-            write_result(result)
-            
-        except Exception as e:
-            pytest.skip(f"Whisper benchmark failed: {e}")
 
 
 class TestThroughputBenchmark:
@@ -288,55 +204,48 @@ Throughput: {throughput:.2f}x real-time
 
 if __name__ == "__main__":
     """Run benchmarks standalone."""
-    print("Running STT Model Benchmarks...")
+    print("Running Zipformer STT Model Benchmarks...")
     print("=" * 60)
     
     # Initialize results file
     with open(RESULTS_FILE, "w", encoding="utf-8") as f:
-        f.write(f"STT Model Benchmark Results\n")
+        f.write(f"Zipformer STT Model Benchmark Results\n")
         f.write(f"Date: {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
         f.write("=" * 60 + "\n\n")
     
-    models = [
-        ("Zipformer", ZipformerWorker, "zipformer"),
-        ("Faster-Whisper", WhisperWorker, "faster-whisper"),
-        ("HKAB", HKABWorker, "hkab"),
-    ]
+    print("\n--- Benchmarking Zipformer ---")
     
-    for name, worker_cls, model_name in models:
-        print(f"\n--- Benchmarking {name} ---")
+    input_q = multiprocessing.Queue()
+    output_q = multiprocessing.Queue()
+    worker = ZipformerWorker(input_q, output_q, "zipformer")
+    
+    try:
+        # Load benchmark
+        mem_before = get_memory_usage_mb()
+        start = time.time()
+        worker.load_model()
+        load_time = time.time() - start
+        mem_after = get_memory_usage_mb()
         
-        input_q = multiprocessing.Queue()
-        output_q = multiprocessing.Queue()
-        worker = worker_cls(input_q, output_q, model_name)
+        print(f"Load Time: {load_time:.2f}s")
+        print(f"Memory: {mem_after - mem_before:.2f} MB")
         
-        try:
-            # Load benchmark
-            mem_before = get_memory_usage_mb()
-            start = time.time()
-            worker.load_model()
-            load_time = time.time() - start
-            mem_after = get_memory_usage_mb()
-            
-            print(f"Load Time: {load_time:.2f}s")
-            print(f"Memory: {mem_after - mem_before:.2f} MB")
-            
-            # Inference benchmark
-            audio = generate_test_audio(3.0)
-            start = time.time()
-            worker.process(audio)
-            latency = time.time() - start
-            
-            print(f"Inference (3s audio): {latency:.2f}s")
-            print(f"RTF: {latency / 3.0:.3f}")
-            
-            write_result(f"{name}: load={load_time:.2f}s, latency={latency:.2f}s, RTF={latency/3.0:.3f}")
-            
-        except Exception as e:
-            print(f"Error: {e}")
-            write_result(f"{name}: FAILED - {e}")
-        finally:
-            input_q.close()
-            output_q.close()
+        # Inference benchmark
+        audio = generate_test_audio(3.0)
+        start = time.time()
+        worker.process(audio)
+        latency = time.time() - start
+        
+        print(f"Inference (3s audio): {latency:.2f}s")
+        print(f"RTF: {latency / 3.0:.3f}")
+        
+        write_result(f"Zipformer: load={load_time:.2f}s, latency={latency:.2f}s, RTF={latency/3.0:.3f}")
+        
+    except Exception as e:
+        print(f"Error: {e}")
+        write_result(f"Zipformer: FAILED - {e}")
+    finally:
+        input_q.close()
+        output_q.close()
     
     print(f"\nResults saved to: {RESULTS_FILE}")

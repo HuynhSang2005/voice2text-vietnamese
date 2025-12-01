@@ -27,7 +27,7 @@ CHUNK_DURATION_MS = 200  # Send 200ms chunks
 CHUNK_SIZE = int(SAMPLE_RATE * CHUNK_DURATION_MS / 1000) * 2  # bytes (int16)
 
 # Models to benchmark
-MODELS = ["zipformer", "hkab", "faster-whisper"]
+MODELS = ["zipformer"]
 
 
 # =============================================================================
@@ -194,12 +194,6 @@ class TestWebSocketLatencyBenchmark:
                     if model_name == "zipformer":
                         # Zipformer should be fast (Offline but still quick)
                         assert avg_latency < 5.0, f"Zipformer latency {avg_latency:.2f}s too high"
-                    elif model_name == "hkab":
-                        # HKAB is streaming, should be reasonably fast
-                        assert avg_latency < 5.0, f"HKAB latency {avg_latency:.2f}s too high"
-                    elif model_name == "faster-whisper":
-                        # Whisper is buffered, latency depends on MIN_DURATION
-                        pass  # No strict assertion for buffered model
                     
                     print(f"\n✅ {model_name} Benchmark Completed")
                     

@@ -22,8 +22,6 @@ import asyncio
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 
 from app.workers.zipformer import ZipformerWorker
-from app.workers.whisper import WhisperWorker
-from app.workers.hkab import HKABWorker
 
 
 # =============================================================================
@@ -81,46 +79,6 @@ class TestRealModelLoading:
             pytest.skip(f"Zipformer model files not found: {e}")
         except Exception as e:
             pytest.fail(f"Failed to load real Zipformer model: {e}")
-        finally:
-            input_q.close()
-            output_q.close()
-    
-    @pytest.mark.slow
-    def test_whisper_worker_real_load(self):
-        """Test loading the REAL faster-whisper model."""
-        input_q = multiprocessing.Queue()
-        output_q = multiprocessing.Queue()
-        
-        worker = WhisperWorker(input_q, output_q, "faster-whisper")
-        
-        try:
-            worker.load_model()
-            assert worker.model is not None
-            print("✅ Real Faster-Whisper model loaded successfully!")
-        except Exception as e:
-            pytest.fail(f"Failed to load real Whisper model: {e}")
-        finally:
-            input_q.close()
-            output_q.close()
-    
-    @pytest.mark.slow
-    def test_hkab_worker_real_load(self):
-        """Test loading the REAL HKAB model from disk."""
-        input_q = multiprocessing.Queue()
-        output_q = multiprocessing.Queue()
-        
-        worker = HKABWorker(input_q, output_q, "hkab")
-        
-        try:
-            worker.load_model()
-            assert hasattr(worker, 'encoder_sess')
-            assert hasattr(worker, 'decoder_sess')
-            assert hasattr(worker, 'jointer_sess')
-            print("✅ Real HKAB model loaded successfully!")
-        except FileNotFoundError as e:
-            pytest.skip(f"HKAB model files not found: {e}")
-        except Exception as e:
-            pytest.fail(f"Failed to load real HKAB model: {e}")
         finally:
             input_q.close()
             output_q.close()
@@ -213,35 +171,6 @@ class TestWebSocketE2E:
     
     @pytest.mark.e2e
     @pytest.mark.asyncio
-    async def test_websocket_model_switch(self, ws_uri):
-        """Test switching models via WebSocket."""
-        import websockets
-        
-        try:
-            async with websockets.connect(ws_uri, close_timeout=5) as websocket:
-                # Start with zipformer
-                await websocket.send(json.dumps({
-                    "type": "config",
-                    "model": "zipformer"
-                }))
-                
-                # Switch to hkab
-                await websocket.send(json.dumps({
-                    "type": "config",
-                    "model": "hkab"
-                }))
-                
-                # Send audio
-                await websocket.send(bytes(8000))
-                
-                # Should not error
-                print("Model switch completed without error")
-                
-        except ConnectionRefusedError:
-            pytest.skip("Backend not running on localhost:8000")
-    
-    @pytest.mark.e2e
-    @pytest.mark.asyncio
     async def test_websocket_session_management(self, ws_uri):
         """Test session management via WebSocket."""
         import websockets
@@ -280,13 +209,9 @@ class TestSmoke:
     def test_imports(self):
         """Test all workers can be imported."""
         from app.workers.zipformer import ZipformerWorker
-        from app.workers.whisper import WhisperWorker
-        from app.workers.hkab import HKABWorker
         from app.core.manager import ModelManager, manager
         
         assert ZipformerWorker is not None
-        assert WhisperWorker is not None
-        assert HKABWorker is not None
         assert ModelManager is not None
         assert manager is not None
     
@@ -294,9 +219,5 @@ class TestSmoke:
         """Test workers inherit from BaseWorker."""
         from app.workers.base import BaseWorker
         from app.workers.zipformer import ZipformerWorker
-        from app.workers.whisper import WhisperWorker
-        from app.workers.hkab import HKABWorker
         
         assert issubclass(ZipformerWorker, BaseWorker)
-        assert issubclass(WhisperWorker, BaseWorker)
-        assert issubclass(HKABWorker, BaseWorker)

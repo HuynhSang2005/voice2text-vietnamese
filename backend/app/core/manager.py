@@ -15,7 +15,7 @@ class ModelManager:
     and ensure CPU-bound inference doesn't block the event loop.
     """
     
-    VALID_MODELS = ["zipformer", "faster-whisper", "phowhisper", "hkab"]
+    VALID_MODELS = ["zipformer"]
     
     def __init__(self):
         self.active_processes: Dict[str, multiprocessing.Process] = {}
@@ -155,12 +155,6 @@ class ModelManager:
         if model_name == "zipformer":
             from app.workers.zipformer import ZipformerWorker
             return ZipformerWorker
-        elif model_name in ["faster-whisper", "phowhisper"]:
-            from app.workers.whisper import WhisperWorker
-            return WhisperWorker
-        elif model_name == "hkab":
-            from app.workers.hkab import HKABWorker
-            return HKABWorker
         return None
 
 

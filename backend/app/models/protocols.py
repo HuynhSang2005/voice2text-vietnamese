@@ -8,8 +8,7 @@ class ModelInfo(BaseModel):
     name: str
     description: str
     # Workflow type helps FE understand how the model outputs results
-    # streaming: outputs is_final=false frequently, is_final=true on flush (Zipformer, HKAB)
-    # buffered: outputs is_final=true only after processing buffer (Whisper, PhoWhisper)
+    # streaming: outputs is_final=false frequently, is_final=true on flush (Zipformer)
     workflow_type: Literal["streaming", "buffered"] = "streaming"
     # Expected latency range in ms (for UI feedback)
     expected_latency_ms: tuple[int, int] = (100, 500)

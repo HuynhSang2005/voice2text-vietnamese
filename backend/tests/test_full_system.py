@@ -15,8 +15,6 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from app.workers.zipformer import ZipformerWorker
-from app.workers.whisper import WhisperWorker
-from app.workers.hkab import HKABWorker
 
 
 class TestModelLoading:
@@ -48,58 +46,6 @@ class TestModelLoading:
         except Exception as e:
             pytest.fail(f"Zipformer failed to load: {e}")
 
-    @pytest.mark.asyncio
-    async def test_faster_whisper_loading(self, queues):
-        """Test Faster-Whisper model loading."""
-        print("\n🔄 Testing Faster-Whisper Loading...")
-        input_q, output_q = queues
-        worker = WhisperWorker(input_q, output_q, "faster-whisper")
-        
-        try:
-            worker.load_model()
-            assert worker.model is not None
-            assert hasattr(worker, 'buffer')
-            print("✅ Faster-Whisper loaded successfully.")
-        except Exception as e:
-            pytest.fail(f"Faster-Whisper failed to load: {e}")
-
-    @pytest.mark.asyncio
-    async def test_phowhisper_loading(self, queues):
-        """Test PhoWhisper model loading."""
-        print("\n🔄 Testing PhoWhisper Loading...")
-        input_q, output_q = queues
-        worker = WhisperWorker(input_q, output_q, "phowhisper")
-        
-        try:
-            worker.load_model()
-            # PhoWhisper might fallback to 'small' if local not found
-            if worker.model is not None:
-                print("✅ PhoWhisper loaded successfully.")
-            else:
-                print("⚠️ PhoWhisper model is None (unexpected).")
-        except Exception as e:
-            # PhoWhisper may not be available, that's OK
-            print(f"⚠️ PhoWhisper loading issue (may be expected): {e}")
-
-    @pytest.mark.asyncio
-    async def test_hkab_loading(self, queues):
-        """Test HKAB model loading."""
-        print("\n🔄 Testing HKAB Loading...")
-        input_q, output_q = queues
-        worker = HKABWorker(input_q, output_q, "hkab")
-        
-        try:
-            worker.load_model()
-            assert hasattr(worker, 'encoder_sess')
-            assert hasattr(worker, 'decoder_sess')
-            assert hasattr(worker, 'jointer_sess')
-            assert hasattr(worker, 'tokenizer')
-            print("✅ HKAB loaded successfully.")
-        except FileNotFoundError as e:
-            pytest.skip(f"HKAB model files not found: {e}")
-        except Exception as e:
-            pytest.fail(f"HKAB failed to load: {e}")
-
 
 class TestWorkerInheritance:
     """Test that workers properly inherit from BaseWorker."""
@@ -108,7 +54,7 @@ class TestWorkerInheritance:
         """Verify all workers implement required abstract methods."""
         from app.workers.base import BaseWorker
         
-        workers = [ZipformerWorker, WhisperWorker, HKABWorker]
+        workers = [ZipformerWorker]
         
         for worker_cls in workers:
             assert issubclass(worker_cls, BaseWorker)
@@ -126,7 +72,7 @@ class TestConflictCheck:
         """Verify no hardcoded absolute paths in worker files."""
         import inspect
         
-        workers = [ZipformerWorker, WhisperWorker, HKABWorker]
+        workers = [ZipformerWorker]
         
         for worker_cls in workers:
             source = inspect.getsource(worker_cls)
@@ -139,7 +85,7 @@ class TestConflictCheck:
         """Verify workers use settings.MODEL_STORAGE_PATH."""
         import inspect
         
-        workers = [ZipformerWorker, WhisperWorker, HKABWorker]
+        workers = [ZipformerWorker]
         
         for worker_cls in workers:
             source = inspect.getsource(worker_cls)

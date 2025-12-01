@@ -36,15 +36,12 @@ class TestModelsEndpoints:
         assert response.status_code == 200
         data = response.json()
         
-        # Should return 4 models
-        assert len(data) == 4
+        # Should return 1 model (zipformer only)
+        assert len(data) == 1
         
         # Verify model IDs
         model_ids = [m["id"] for m in data]
         assert "zipformer" in model_ids
-        assert "faster-whisper" in model_ids
-        assert "phowhisper" in model_ids
-        assert "hkab" in model_ids
         
         # Verify model structure
         for model in data:
@@ -79,30 +76,6 @@ class TestSwitchModelEndpoint:
         assert data["current_model"] == "zipformer"
         mock_start_model.assert_called_with("zipformer")
     
-    @patch("app.core.manager.ModelManager.start_model")
-    def test_switch_model_whisper(self, mock_start_model, client):
-        """Test switching to faster-whisper."""
-        response = client.post("/api/v1/models/switch?model=faster-whisper")
-        
-        assert response.status_code == 200
-        mock_start_model.assert_called_with("faster-whisper")
-    
-    @patch("app.core.manager.ModelManager.start_model")
-    def test_switch_model_phowhisper(self, mock_start_model, client):
-        """Test switching to phowhisper."""
-        response = client.post("/api/v1/models/switch?model=phowhisper")
-        
-        assert response.status_code == 200
-        mock_start_model.assert_called_with("phowhisper")
-    
-    @patch("app.core.manager.ModelManager.start_model")
-    def test_switch_model_hkab(self, mock_start_model, client):
-        """Test switching to hkab."""
-        response = client.post("/api/v1/models/switch?model=hkab")
-        
-        assert response.status_code == 200
-        mock_start_model.assert_called_with("hkab")
-    
     def test_switch_invalid_model(self, client):
         """Test switching to invalid model returns 400."""
         response = client.post("/api/v1/models/switch?model=invalid")
@@ -112,6 +85,20 @@ class TestSwitchModelEndpoint:
         data = response.json()
         assert data["status"] == 400
         assert "Invalid model" in data["detail"]
+
+    def test_switch_faster_whisper_invalid(self, client):
+        """Test switching to faster-whisper returns 400 (model removed)."""
+        response = client.post("/api/v1/models/switch?model=faster-whisper")
+        
+        assert response.status_code == 400
+        assert "Invalid model" in response.json()["detail"]
+
+    def test_switch_hkab_invalid(self, client):
+        """Test switching to hkab returns 400 (model removed)."""
+        response = client.post("/api/v1/models/switch?model=hkab")
+        
+        assert response.status_code == 400
+        assert "Invalid model" in response.json()["detail"]
     
     def test_switch_missing_model_param(self, client):
         """Test missing model parameter returns 422."""

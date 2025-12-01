@@ -143,7 +143,7 @@ def long_audio_bytes() -> bytes:
 # Model Constants
 # =============================================================================
 
-VALID_MODELS = ["zipformer", "faster-whisper", "phowhisper", "hkab"]
+VALID_MODELS = ["zipformer"]
 
 
 @pytest.fixture

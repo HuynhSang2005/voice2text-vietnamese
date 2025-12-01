@@ -27,7 +27,7 @@ class TestModelManager:
     
     def test_valid_models_constant(self, fresh_manager):
         """Test that VALID_MODELS contains expected models."""
-        expected = ["zipformer", "faster-whisper", "phowhisper", "hkab"]
+        expected = ["zipformer"]
         assert fresh_manager.VALID_MODELS == expected
     
     def test_initial_state(self, fresh_manager):
@@ -72,64 +72,22 @@ class TestModelManager:
         assert "zipformer" in fresh_manager.output_queues
         assert fresh_manager.current_model == "zipformer"
     
-    @patch("app.core.manager.multiprocessing.Process")
-    @patch("app.core.manager.ModelManager._get_worker_class")
-    def test_start_model_whisper(self, mock_get_worker, mock_process_cls, fresh_manager):
-        """Test starting Faster-Whisper model worker."""
-        mock_worker_cls = MagicMock()
-        mock_worker_instance = MagicMock()
-        mock_worker_cls.return_value = mock_worker_instance
-        mock_get_worker.return_value = mock_worker_cls
-        
-        mock_process_instance = MagicMock()
-        mock_process_instance.pid = 12346
-        mock_process_cls.return_value = mock_process_instance
-        
-        fresh_manager.start_model("faster-whisper")
-        
-        mock_worker_cls.assert_called_once()
-        args = mock_worker_cls.call_args[0]
-        assert args[2] == "faster-whisper"  # model_name
-        mock_process_instance.start.assert_called_once()
-    
-    @patch("app.core.manager.multiprocessing.Process")
-    @patch("app.core.manager.ModelManager._get_worker_class")
-    def test_start_model_phowhisper(self, mock_get_worker, mock_process_cls, fresh_manager):
-        """Test starting PhoWhisper model worker."""
-        mock_worker_cls = MagicMock()
-        mock_worker_instance = MagicMock()
-        mock_worker_cls.return_value = mock_worker_instance
-        mock_get_worker.return_value = mock_worker_cls
-        
-        mock_process_instance = MagicMock()
-        mock_process_cls.return_value = mock_process_instance
-        
-        fresh_manager.start_model("phowhisper")
-        
-        args = mock_worker_cls.call_args[0]
-        assert args[2] == "phowhisper"
-    
-    @patch("app.core.manager.multiprocessing.Process")
-    @patch("app.core.manager.ModelManager._get_worker_class")
-    def test_start_model_hkab(self, mock_get_worker, mock_process_cls, fresh_manager):
-        """Test starting HKAB model worker."""
-        mock_worker_cls = MagicMock()
-        mock_worker_instance = MagicMock()
-        mock_worker_cls.return_value = mock_worker_instance
-        mock_get_worker.return_value = mock_worker_cls
-        
-        mock_process_instance = MagicMock()
-        mock_process_cls.return_value = mock_process_instance
-        
-        fresh_manager.start_model("hkab")
-        
-        args = mock_worker_cls.call_args[0]
-        assert args[2] == "hkab"
-    
     def test_start_invalid_model(self, fresh_manager):
         """Test that invalid model name raises ValueError."""
         with pytest.raises(ValueError) as excinfo:
             fresh_manager.start_model("invalid-model")
+        assert "Unknown model" in str(excinfo.value)
+
+    def test_start_whisper_model_invalid(self, fresh_manager):
+        """Test that faster-whisper model is no longer valid."""
+        with pytest.raises(ValueError) as excinfo:
+            fresh_manager.start_model("faster-whisper")
+        assert "Unknown model" in str(excinfo.value)
+
+    def test_start_hkab_model_invalid(self, fresh_manager):
+        """Test that hkab model is no longer valid."""
+        with pytest.raises(ValueError) as excinfo:
+            fresh_manager.start_model("hkab")
         assert "Unknown model" in str(excinfo.value)
     
     @patch("app.core.manager.multiprocessing.Process")
@@ -208,21 +166,6 @@ class TestModelManager:
         with patch.dict("sys.modules", {"app.workers.zipformer": MagicMock()}):
             from app.workers.zipformer import ZipformerWorker
             worker_cls = fresh_manager._get_worker_class("zipformer")
-            assert worker_cls is not None
-    
-    def test_get_worker_class_whisper(self, fresh_manager):
-        """Test _get_worker_class returns correct class for whisper models."""
-        with patch.dict("sys.modules", {"app.workers.whisper": MagicMock()}):
-            worker_cls = fresh_manager._get_worker_class("faster-whisper")
-            assert worker_cls is not None
-            
-            worker_cls = fresh_manager._get_worker_class("phowhisper")
-            assert worker_cls is not None
-    
-    def test_get_worker_class_hkab(self, fresh_manager):
-        """Test _get_worker_class returns correct class for hkab."""
-        with patch.dict("sys.modules", {"app.workers.hkab": MagicMock()}):
-            worker_cls = fresh_manager._get_worker_class("hkab")
             assert worker_cls is not None
     
     def test_get_worker_class_unknown(self, fresh_manager):
