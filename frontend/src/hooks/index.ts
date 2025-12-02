@@ -11,3 +11,4 @@ export { useHistory, type HistoryFilters, type UseHistoryOptions } from './useHi
 export { useModels, type UseModelsOptions } from './useModels'
 export { useModelStatus, type UseModelStatusOptions } from './useModelStatus'
 export { useSwitchModel, type UseSwitchModelOptions, type ModelId } from './useSwitchModel'
+export { useHealthCheck, type UseHealthCheckOptions } from './useHealthCheck'

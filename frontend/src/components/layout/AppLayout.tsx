@@ -10,6 +10,7 @@ import {
 } from '@ant-design/icons'
 import { useNavigate, useLocation } from '@tanstack/react-router'
 import { MobileDrawer } from './MobileDrawer'
+import { ServerStatus } from '@/components/common'
 
 const { Sider, Content, Header } = Layout
 const { Text } = Typography
@@ -87,7 +88,7 @@ export function AppLayout({ children }: AppLayoutProps) {
             <AudioOutlined style={{ fontSize: 20, color: token.colorPrimary }} />
             <Text strong style={{ fontSize: 16 }}>Voice2Text</Text>
           </Flex>
-          <div style={{ width: 32 }} /> {/* Spacer for balance */}
+          <ServerStatus size="small" />
         </Header>
 
         {/* Mobile Drawer */}
@@ -168,7 +169,8 @@ export function AppLayout({ children }: AppLayoutProps) {
 
         {/* Collapse Toggle Button at Bottom */}
         <Flex
-          justify="center"
+          vertical
+          gap={12}
           style={{
             position: 'absolute',
             bottom: 16,
@@ -177,6 +179,11 @@ export function AppLayout({ children }: AppLayoutProps) {
             padding: '0 16px',
           }}
         >
+          {/* Server Status */}
+          <Flex justify="center">
+            <ServerStatus showLabel={!collapsed} size="small" />
+          </Flex>
+          
           <Button
             type="text"
             icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}

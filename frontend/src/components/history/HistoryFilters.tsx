@@ -1,6 +1,8 @@
 import { Input, Select, DatePicker, Button, Flex } from 'antd'
 import { SearchOutlined, FilterOutlined, ClearOutlined } from '@ant-design/icons'
 import type { Dayjs } from 'dayjs'
+import { useModels } from '@/hooks'
+import { useMemo } from 'react'
 
 const { RangePicker } = DatePicker
 
@@ -16,11 +18,6 @@ export interface HistoryFiltersProps {
   onClear: () => void
   loading?: boolean
 }
-
-const MODEL_OPTIONS = [
-  { value: '', label: 'Tất cả models' },
-  { value: 'zipformer', label: 'Zipformer' },
-]
 
 /**
  * Filters component for history list
@@ -41,6 +38,19 @@ export function HistoryFilters({
   onClear,
   loading = false,
 }: HistoryFiltersProps) {
+  // Fetch models from API
+  const { models, isLoading: isLoadingModels } = useModels()
+  
+  // Build model options dynamically from API
+  const modelOptions = useMemo(() => {
+    const options = [{ value: '', label: 'Tất cả models' }]
+    if (models) {
+      models.forEach(model => {
+        options.push({ value: model.id, label: model.name })
+      })
+    }
+    return options
+  }, [models])
   const handleSearchChange = (search: string) => {
     onChange({ ...value, search })
   }
@@ -73,10 +83,11 @@ export function HistoryFilters({
         placeholder="Chọn model"
         value={value.model || ''}
         onChange={handleModelChange}
-        options={MODEL_OPTIONS}
+        options={modelOptions}
         style={{ width: 180 }}
         suffixIcon={<FilterOutlined />}
         disabled={loading}
+        loading={isLoadingModels}
       />
 
       {/* Date Range Picker */}

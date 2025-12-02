@@ -6,8 +6,12 @@ import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 
 import { AntdProvider } from '@/lib/antd-provider'
 import { ErrorBoundary } from '@/components/common'
+import { setupApiClient } from '@/lib/api'
 import { routeTree } from './routeTree.gen'
 import './styles.css'
+
+// Setup API client with environment configuration
+setupApiClient()
 
 // Create a new router instance
 const router = createRouter({ routeTree })
