@@ -6,21 +6,19 @@ Complete setup script for new users cloning the Vietnamese Speech-to-Text reposi
 This script automates the entire backend setup process including:
 - Python virtual environment creation
 - Dependency installation  
-- AI model downloads
+- Zipformer model download
 - Database initialization
 - Environment configuration
 - Health checks
 
 Usage:
-    python scripts/setup_backend.py           # Full setup with all models
-    python scripts/setup_backend.py --quick   # Quick setup (Zipformer + Faster-Whisper only)
+    python scripts/setup_backend.py           # Full setup
     python scripts/setup_backend.py --skip-models  # Skip model downloads
     python scripts/setup_backend.py --verify  # Only run verification
 
 Requirements:
     - Python 3.10+ installed and in PATH
-    - Git installed (for HKAB model)
-    - ~5GB disk space for all models
+    - ~200MB disk space for Zipformer model
     - Internet connection
 
 Author: Auto-generated for Vietnamese STT Project
@@ -62,7 +60,7 @@ def print_banner():
 ║                                                              ║
 ║    🎤 Vietnamese Speech-to-Text Backend Setup                ║
 ║                                                              ║
-║    Real-time transcription with multiple AI models           ║
+║    Real-time transcription with Zipformer model              ║
 ║                                                              ║
 ╚══════════════════════════════════════════════════════════════╝
     """
@@ -201,13 +199,6 @@ def step_check_prerequisites() -> bool:
         print_error(message)
         all_ok = False
     
-    # Check Git (optional but recommended)
-    print_step("Git installation")
-    if check_command_exists("git"):
-        print_success("Git found ✓")
-    else:
-        print_warning("Git not found - HKAB model setup may fail")
-    
     # Check project structure
     print_step("Project structure")
     if not BACKEND_DIR.exists():
@@ -225,8 +216,8 @@ def step_check_prerequisites() -> bool:
         import shutil
         total, used, free = shutil.disk_usage(PROJECT_ROOT)
         free_gb = free / (1024 ** 3)
-        if free_gb < 5:
-            print_warning(f"Low disk space: {free_gb:.1f}GB free (need ~5GB for models)")
+        if free_gb < 1:
+            print_warning(f"Low disk space: {free_gb:.1f}GB free (need ~200MB for model)")
         else:
             print_success(f"{free_gb:.1f}GB free ✓")
     except Exception:
@@ -318,17 +309,14 @@ def step_install_dependencies() -> bool:
         return False
 
 
-def step_setup_models(quick: bool = False) -> bool:
+def step_setup_models() -> bool:
     """
-    Step 4: Download and setup AI models.
-    
-    Args:
-        quick: If True, only setup essential models (Zipformer + Faster-Whisper)
+    Step 4: Download and setup Zipformer model.
         
     Returns:
         True if successful
     """
-    print_header("Step 4: Setting Up AI Models")
+    print_header("Step 4: Setting Up Zipformer Model")
     
     venv_python = get_venv_python()
     setup_models_script = SCRIPT_DIR / "setup_models.py"
@@ -337,40 +325,16 @@ def step_setup_models(quick: bool = False) -> bool:
         print_error(f"Model setup script not found: {setup_models_script}")
         return False
     
-    # Build command
-    cmd = [str(venv_python), str(setup_models_script)]
+    print_info("Downloading Zipformer model (~200MB)...")
+    print_info("This may take a few minutes depending on your connection...")
     
-    if quick:
-        print_info("Quick mode: Setting up Zipformer and Faster-Whisper only")
-        cmd.extend(["--zipformer"])
-        
-        # Run Zipformer setup
-        print_step("Setting up Zipformer model")
-        try:
-            run_command(cmd, capture_output=False)
-        except Exception as e:
-            print_error(f"Zipformer setup failed: {e}")
-        
-        # Run Faster-Whisper setup
-        cmd = [str(venv_python), str(setup_models_script), "--whisper"]
-        print_step("Setting up Faster-Whisper model")
-        try:
-            run_command(cmd, capture_output=False)
-        except Exception as e:
-            print_error(f"Faster-Whisper setup failed: {e}")
-        
+    try:
+        run_command([str(venv_python), str(setup_models_script)], capture_output=False)
+        print_success("Model setup completed ✓")
         return True
-    else:
-        print_info("Full mode: Setting up all 4 models")
-        print_info("This may take 10-30 minutes depending on your connection...")
-        
-        try:
-            run_command(cmd, capture_output=False)
-            print_success("Model setup completed ✓")
-            return True
-        except Exception as e:
-            print_warning(f"Some models may have failed: {e}")
-            return True  # Continue anyway, some models might work
+    except Exception as e:
+        print_warning(f"Model setup failed: {e}")
+        return False
 
 
 def step_setup_database() -> bool:
@@ -492,7 +456,6 @@ def step_verify_installation() -> bool:
         ("uvicorn", "Uvicorn"),
         ("sqlmodel", "SQLModel"),
         ("sherpa_onnx", "Sherpa-ONNX"),
-        ("faster_whisper", "Faster-Whisper"),
     ]
     
     for package, name in critical_packages:
@@ -513,7 +476,6 @@ def step_verify_installation() -> bool:
     
     model_checks = [
         ("zipformer/hynt-zipformer-30M-6000h", "encoder-epoch-20-avg-10.int8.onnx"),
-        ("faster-whisper", None),  # Just check directory exists
     ]
     
     for model_path, check_file in model_checks:
@@ -553,23 +515,17 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-    python scripts/setup_backend.py           # Full setup with all models
-    python scripts/setup_backend.py --quick   # Quick setup (essential models only)
+    python scripts/setup_backend.py           # Full setup
     python scripts/setup_backend.py --skip-models  # Skip model downloads
     python scripts/setup_backend.py --verify  # Only verify existing installation
 
 Notes:
     - Requires Python 3.10+
-    - Full setup needs ~5GB disk space
-    - Model downloads may take 10-30 minutes
+    - Full setup needs ~200MB disk space for Zipformer model
+    - Model download may take a few minutes
         """
     )
     
-    parser.add_argument(
-        "--quick", "-q",
-        action="store_true",
-        help="Quick setup: only Zipformer + Faster-Whisper models"
-    )
     parser.add_argument(
         "--skip-models", "-s",
         action="store_true",
@@ -610,7 +566,7 @@ Notes:
     steps.append(("Dependencies", step_install_dependencies))
     
     if not args.skip_models:
-        steps.append(("AI Models", lambda: step_setup_models(quick=args.quick)))
+        steps.append(("Zipformer Model", step_setup_models))
     
     steps.extend([
         ("Database", step_setup_database),

@@ -2,25 +2,19 @@
 """
 Setup Models Script
 ===================
-Downloads and configures all AI models for the Vietnamese Speech-to-Text system.
+Downloads and configures the Zipformer AI model for the Vietnamese Speech-to-Text system.
 
-Models:
-1. Zipformer (Hynt) - RNN-T model from HuggingFace (30M params)
-2. Faster-Whisper - OpenAI Whisper optimized with CTranslate2
-3. PhoWhisper - VinAI's Vietnamese-optimized Whisper
-4. HKAB - Community RNN-T model with ONNX export
+Model:
+- Zipformer (Hynt) - RNN-T model from HuggingFace (30M params, trained on 6000h Vietnamese data)
 
 Usage:
-    python scripts/setup_models.py              # Setup all models
-    python scripts/setup_models.py --zipformer  # Setup only Zipformer
-    python scripts/setup_models.py --whisper    # Setup only Faster-Whisper
-    python scripts/setup_models.py --phowhisper # Setup only PhoWhisper
-    python scripts/setup_models.py --hkab       # Setup only HKAB
+    python scripts/setup_models.py              # Setup Zipformer model
+    python scripts/setup_models.py --zipformer  # Same as above
 
 Requirements:
     - Python 3.10+
     - Internet connection
-    - ~5GB disk space for all models
+    - ~200MB disk space for Zipformer model
 """
 import os
 import sys
@@ -52,12 +46,6 @@ HYNT_FILES = [
     "bpe.model",
     # tokens.txt will be generated from bpe.model
 ]
-
-# HKAB Model (GitHub)
-HKAB_REPO_URL = "https://github.com/HKAB/vietnamese-rnnt-tutorial.git"
-
-# PhoWhisper Model (VinAI)
-PHOWHISPER_MODEL = "vinai/PhoWhisper-small"
 
 
 # ============================================================================
@@ -222,169 +210,6 @@ def setup_zipformer() -> bool:
     return success
 
 
-def setup_faster_whisper() -> bool:
-    """
-    Setup Faster-Whisper model.
-    Uses the faster-whisper library to download the 'small' model.
-    
-    Returns:
-        True if successful, False otherwise
-    """
-    print_header("Setting up Faster-Whisper")
-    
-    model_dir = MODELS_DIR / "faster-whisper"
-    model_dir.mkdir(parents=True, exist_ok=True)
-    
-    print(f"Model directory: {model_dir}")
-    
-    try:
-        print_step("Downloading Faster-Whisper (small) model...")
-        print("    This may take a few minutes...")
-        
-        from faster_whisper import WhisperModel
-        
-        # The library will download to the specified directory
-        model = WhisperModel(
-            "small",
-            device="cpu",
-            compute_type="int8",
-            download_root=str(model_dir)
-        )
-        
-        print("\n✅ Faster-Whisper setup complete!")
-        return True
-        
-    except ImportError:
-        print("    [ERROR] 'faster-whisper' not installed.")
-        print("    Run: pip install faster-whisper")
-        return False
-    except Exception as e:
-        print(f"    [ERROR] Failed to setup Faster-Whisper: {e}")
-        return False
-
-
-def setup_phowhisper() -> bool:
-    """
-    Setup PhoWhisper (VinAI) model.
-    Converts the HuggingFace model to CTranslate2 format.
-    
-    Returns:
-        True if successful, False otherwise
-    """
-    print_header("Setting up PhoWhisper (VinAI)")
-    
-    output_dir = MODELS_DIR / "phowhisper-ct2"
-    
-    # Check if already converted
-    if (output_dir / "model.bin").exists():
-        print(f"    [SKIP] PhoWhisper already installed at {output_dir}")
-        print("\n✅ PhoWhisper setup complete!")
-        return True
-    
-    output_dir.mkdir(parents=True, exist_ok=True)
-    print(f"Output directory: {output_dir}")
-    
-    # Check if ct2-transformers-converter is available
-    if not check_command_exists("ct2-transformers-converter"):
-        print("    [ERROR] 'ct2-transformers-converter' not found.")
-        print("    Install with: pip install ctranslate2 transformers[torch]")
-        print("\n    Manual conversion command:")
-        print(f"    ct2-transformers-converter --model {PHOWHISPER_MODEL} \\")
-        print(f"        --output_dir {output_dir} --quantization int8 \\")
-        print("        --copy_files tokenizer.json preprocessor_config.json")
-        return False
-    
-    try:
-        print_step(f"Converting {PHOWHISPER_MODEL} to CTranslate2 format...")
-        print("    This may take 5-10 minutes and requires ~8GB RAM...")
-        
-        cmd = [
-            "ct2-transformers-converter",
-            "--model", PHOWHISPER_MODEL,
-            "--output_dir", str(output_dir),
-            "--quantization", "int8",
-            "--copy_files", "tokenizer.json", "preprocessor_config.json"
-        ]
-        
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        
-        if result.returncode != 0:
-            print(f"    [ERROR] Conversion failed: {result.stderr}")
-            return False
-        
-        print("\n✅ PhoWhisper setup complete!")
-        return True
-        
-    except Exception as e:
-        print(f"    [ERROR] Failed to setup PhoWhisper: {e}")
-        return False
-
-
-def setup_hkab() -> bool:
-    """
-    Setup HKAB model by cloning the GitHub repository.
-    The repo includes pre-exported ONNX models.
-    
-    Returns:
-        True if successful, False otherwise
-    """
-    print_header("Setting up HKAB (RNN-Transducer)")
-    
-    hkab_dir = MODELS_DIR / "hkab"
-    
-    # Check if already cloned
-    if (hkab_dir / "onnx" / "encoder-infer.quant.onnx").exists():
-        print(f"    [SKIP] HKAB already installed at {hkab_dir}")
-        print("\n✅ HKAB setup complete!")
-        return True
-    
-    # Check if git is available
-    if not check_command_exists("git"):
-        print("    [ERROR] 'git' not found. Please install git and try again.")
-        print(f"    Manual clone: git clone {HKAB_REPO_URL} {hkab_dir}")
-        return False
-    
-    try:
-        if hkab_dir.exists():
-            print(f"    [INFO] Removing existing directory: {hkab_dir}")
-            shutil.rmtree(hkab_dir)
-        
-        print_step("Cloning HKAB repository...")
-        print(f"    From: {HKAB_REPO_URL}")
-        print(f"    To: {hkab_dir}")
-        
-        result = subprocess.run(
-            ["git", "clone", "--depth", "1", HKAB_REPO_URL, str(hkab_dir)],
-            capture_output=True,
-            text=True
-        )
-        
-        if result.returncode != 0:
-            print(f"    [ERROR] Clone failed: {result.stderr}")
-            return False
-        
-        # Verify ONNX files exist
-        onnx_dir = hkab_dir / "onnx"
-        required_files = [
-            "encoder-infer.quant.onnx",
-            "decoder-infer.quant.onnx",
-            "jointer-infer.quant.onnx"
-        ]
-        
-        missing = [f for f in required_files if not (onnx_dir / f).exists()]
-        if missing:
-            print(f"    [WARNING] Missing ONNX files: {missing}")
-            print("    The ONNX export may need to be done manually.")
-            print("    See: notebooks/inference.ipynb in the HKAB repo")
-        
-        print("\n✅ HKAB setup complete!")
-        return True
-        
-    except Exception as e:
-        print(f"    [ERROR] Failed to setup HKAB: {e}")
-        return False
-
-
 # ============================================================================
 # Main Function
 # ============================================================================
@@ -392,28 +217,18 @@ def setup_hkab() -> bool:
 def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(
-        description="Setup AI models for Vietnamese Speech-to-Text",
+        description="Setup Zipformer model for Vietnamese Speech-to-Text",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-    python scripts/setup_models.py              # Setup all models
-    python scripts/setup_models.py --zipformer  # Setup only Zipformer
-    python scripts/setup_models.py --whisper    # Setup only Faster-Whisper
-    python scripts/setup_models.py --phowhisper # Setup only PhoWhisper
-    python scripts/setup_models.py --hkab       # Setup only HKAB
+    python scripts/setup_models.py              # Setup Zipformer model
+    python scripts/setup_models.py --zipformer  # Same as above
         """
     )
     
-    parser.add_argument("--zipformer", action="store_true", help="Setup Zipformer model only")
-    parser.add_argument("--whisper", action="store_true", help="Setup Faster-Whisper model only")
-    parser.add_argument("--phowhisper", action="store_true", help="Setup PhoWhisper model only")
-    parser.add_argument("--hkab", action="store_true", help="Setup HKAB model only")
-    parser.add_argument("--skip-phowhisper", action="store_true", help="Skip PhoWhisper (requires conversion)")
+    parser.add_argument("--zipformer", action="store_true", help="Setup Zipformer model (default)")
     
     args = parser.parse_args()
-    
-    # Determine which models to setup
-    specific_model = args.zipformer or args.whisper or args.phowhisper or args.hkab
     
     print_header("Vietnamese Speech-to-Text Model Setup")
     print(f"\nProject Root: {PROJECT_ROOT}")
@@ -424,21 +239,8 @@ Examples:
     
     results = {}
     
-    # Setup selected models
-    if not specific_model or args.zipformer:
-        results["Zipformer"] = setup_zipformer()
-    
-    if not specific_model or args.whisper:
-        results["Faster-Whisper"] = setup_faster_whisper()
-    
-    if not specific_model or args.phowhisper:
-        if not args.skip_phowhisper:
-            results["PhoWhisper"] = setup_phowhisper()
-        else:
-            print_header("Skipping PhoWhisper (--skip-phowhisper)")
-    
-    if not specific_model or args.hkab:
-        results["HKAB"] = setup_hkab()
+    # Setup Zipformer (the only supported model now)
+    results["Zipformer"] = setup_zipformer()
     
     # Print summary
     print_header("Setup Summary")
@@ -452,7 +254,7 @@ Examples:
     
     if all_success:
         print("\n" + "=" * 60)
-        print("  🎉 All models setup successfully!")
+        print("  🎉 Model setup successfully!")
         print("=" * 60)
         print("\nNext steps:")
         print("  1. cd backend")
@@ -461,7 +263,7 @@ Examples:
         return 0
     else:
         print("\n" + "=" * 60)
-        print("  ⚠️  Some models failed to setup. Check errors above.")
+        print("  ⚠️  Model setup failed. Check errors above.")
         print("=" * 60)
         return 1
 

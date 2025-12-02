@@ -22,8 +22,6 @@ MODEL_URLS = {
     "Zipformer (Hynt) - decoder": "https://huggingface.co/hynt/Zipformer-30M-RNNT-6000h/resolve/main/decoder-epoch-20-avg-10.int8.onnx",
     "Zipformer (Hynt) - joiner": "https://huggingface.co/hynt/Zipformer-30M-RNNT-6000h/resolve/main/joiner-epoch-20-avg-10.int8.onnx",
     "Zipformer (Hynt) - bpe.model": "https://huggingface.co/hynt/Zipformer-30M-RNNT-6000h/resolve/main/bpe.model",
-    "HKAB Repo (GitHub)": "https://github.com/HKAB/vietnamese-rnnt-tutorial",
-    "PhoWhisper (VinAI HF)": "https://huggingface.co/vinai/PhoWhisper-small",
 }
 
 
@@ -66,7 +64,7 @@ def check_all_urls() -> List[Tuple[bool, str]]:
     results = []
     
     print("=" * 60)
-    print("Checking Model Download URLs")
+    print("Checking Zipformer Model Download URLs")
     print("=" * 60)
     
     for name, url in MODEL_URLS.items():
