@@ -11,7 +11,11 @@
     "gen:api": "openapi-ts",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build"
+    "tauri:build": "tauri build",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@ant-design/icons": "^6.1.0",
@@ -36,12 +40,18 @@
     "@hey-api/openapi-ts": "^0.88.0",
     "@tanstack/router-plugin": "^1.139.10",
     "@tauri-apps/cli": "^2.9.4",
-    "@types/node": "^22.10.2",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.0",
+    "@types/node": "^24.10.1",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "@vitejs/plugin-react": "^5.0.4",
+    "happy-dom": "^20.0.11",
+    "jsdom": "^27.2.0",
+    "msw": "^2.12.3",
     "prettier": "^3.5.3",
     "typescript": "^5.7.2",
-    "vite": "^7.1.7"
+    "vite": "^7.1.7",
+    "vitest": "^4.0.14"
   }
 }
