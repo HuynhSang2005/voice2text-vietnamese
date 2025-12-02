@@ -28,9 +28,7 @@ backend/
 │   │   └── protocols.py    # Type protocols
 │   ├── workers/
 │   │   ├── base.py         # BaseWorker abstract class
-│   │   ├── zipformer.py    # ZipformerWorker (sherpa-onnx)
-│   │   ├── whisper.py      # WhisperWorker (faster-whisper)
-│   │   └── hkab.py         # HKABWorker (ONNX Runtime)
+│   │   └── zipformer.py    # ZipformerWorker (sherpa-onnx)
 │   └── __init__.py
 ├── main.py                 # FastAPI entry point
 ├── scripts/
@@ -64,8 +62,6 @@ class BaseWorker:
 | Worker | Engine | Model Loading | Special Features |
 |--------|--------|---------------|------------------|
 | `ZipformerWorker` | `sherpa-onnx` | `OfflineRecognizer.from_transducer()` | Greedy decoding |
-| `WhisperWorker` | `faster-whisper` | `WhisperModel(size, compute_type)` | Energy-based VAD, beam=5 |
-| `HKABWorker` | `onnxruntime` | Manual encoder/decoder/joiner | Custom RNN-T inference loop |
 
 #### C. ModelManager
 

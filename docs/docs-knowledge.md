@@ -11,12 +11,6 @@ Hiểu rõ sự khác biệt cốt lõi để xây dựng luồng xử lý (pipe
   - **Đặc điểm:** Output text xuất hiện liên tục, độ trễ cực thấp (Real-time đúng nghĩa).
   - **Yêu cầu hệ thống:** Cần stateful worker (giữ trạng thái câu nói).
 
-- **Sequence-to-Sequence (Encoder-Decoder) / Chunk-based:**
-  - **Đại diện:** Whisper (Faster-Whisper), PhoWhisper.
-  - **Cơ chế:** Cần nhìn thấy cả một đoạn âm thanh (context) mới có thể sắp xếp và dự đoán từ ngữ chính xác.
-  - **Đặc điểm:** Output text xuất hiện theo từng cụm hoặc từng câu sau khi xử lý xong một đoạn audio buffer (Pseudo-streaming). Độ trễ cao hơn Transducer.
-  - **Yêu cầu hệ thống:** Cần bộ đệm (Buffer) và VAD để cắt file.
-
 ### 2. Chỉ số đo lường (Metrics)
 
 Các tiêu chí định lượng dùng để so sánh 3 models trong bài nghiên cứu.
@@ -41,15 +35,12 @@ Quy chuẩn input audio bắt buộc cho mọi model để đảm bảo tính nh
 
 ### 4. Thuật ngữ & Công nghệ (Tech Glossary)
 
-- **VAD (Voice Activity Detection):** Kỹ thuật phát hiện tiếng nói con người. Dùng để loại bỏ khoảng lặng (silence) và xác định thời điểm ngắt câu để gửi cho Whisper xử lý.
-  - _Silero VAD:_ Pre-trained neural network VAD (built-in faster-whisper).
-  - _Energy-based VAD:_ Đơn giản hơn, dựa trên RMS energy threshold.
+- **VAD (Voice Activity Detection):** Kỹ thuật phát hiện tiếng nói con người. Dùng để loại bỏ khoảng lặng (silence) và xác định thời điểm ngắt câu.
+  - _Energy-based VAD:_ Đơn giản, dựa trên RMS energy threshold.
 - **Quantization (Lượng tử hóa):** Kỹ thuật giảm độ chính xác của trọng số model (từ float32 xuống int8) để giảm dung lượng RAM và tăng tốc độ inference mà ít ảnh hưởng đến độ chính xác.
 - **AudioWorklet:** API của trình duyệt chạy trên luồng riêng (khác Main Thread), dùng để capture và xử lý audio raw thời gian thực mà không bị giật lag UI.
 - **Inference Engine:**
-  - _CTranslate2:_ Engine tối ưu cho Transformer models (Whisper/PhoWhisper). Hỗ trợ int8/float16.
   - _Sherpa-onnx:_ Engine tối ưu cho Transducer models (Zipformer). Hỗ trợ streaming & offline.
-  - _ONNX Runtime:_ General-purpose inference engine. Dùng cho custom models (HKAB).
 - **RNN-Transducer (RNN-T):** Architecture kết hợp encoder (audio features) + prediction network (text context) + joint network. Hỗ trợ streaming inference.
 
 ---

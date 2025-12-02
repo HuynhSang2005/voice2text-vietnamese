@@ -1,34 +1,20 @@
 # DOCS-SOLUTIONS: Core Logic & System Algorithms
 
-### 1\. Dual-Strategy Processing (Chiến lược xử lý kép)
+### 1\. Processing Strategy (Chiến lược xử lý)
 
-Do tính chất khác biệt của các model, Backend sẽ áp dụng **Strategy Pattern** để tách biệt logic xử lý luồng âm thanh.
+#### Streaming Transcription (Zipformer)
 
-#### A. Strategy 1: Buffered Offline (Dành cho Zipformer/HKAB)
-
-> **Lưu ý:** Mặc dù Zipformer/HKAB là RNN-T models có khả năng true streaming, implementation hiện tại sử dụng **OfflineRecognizer** với audio buffering để đơn giản hóa.
-
-- **Nguyên lý:** Accumulate audio chunks → Process full buffer → Return result.
+- **Nguyên lý:** Real-time streaming với incremental results.
 - **Logic Flow:**
-  1.  Nhận Audio Chunk từ Queue.
-  2.  Buffer audio cho đến khi đủ dữ liệu hoặc gặp silence.
-  3.  Feed buffer vào `sherpa-onnx.OfflineRecognizer` (Zipformer) hoặc ONNX Runtime (HKAB).
-  4.  Trả về kết quả transcription.
-  5.  Clear buffer, repeat.
+  1.  Nhận Audio Chunk từ WebSocket.
+  2.  Buffer audio và feed vào `sherpa-onnx.OfflineRecognizer`.
+  3.  Trả về kết quả transcription ngay lập tức.
+  4.  Gửi `is_final: false` cho interim results, `is_final: true` khi flush.
 
-#### B. Strategy 2: Energy-based VAD Buffered (Dành cho Faster/PhoWhisper)
-
-- **Nguyên lý:** Tích lũy âm thanh $\rightarrow$ Detect silence via energy $\rightarrow$ Xử lý 1 cục $\rightarrow$ Trả kết quả.
-- **Logic Flow:**
-  1.  Nhận Audio Chunk từ Queue.
-  2.  **Energy-based VAD:** Tính RMS energy của audio samples.
-  3.  **Buffer Accumulation:**
-      - Nếu energy > `SILENCE_THRESHOLD` (0.0005): Append chunk vào buffer.
-      - Nếu energy thấp (silence detected): Coi như hết câu (`is_final`).
-  4.  **Trigger Inference:**
-      - Nếu `buffer` > `MIN_DURATION` (3s) hoặc gặp silence: Đẩy `buffer` vào model `faster-whisper`.
-      - Nếu `buffer` > `MAX_DURATION` (15s): Force transcribe.
-  5.  **Post-process:** Trả text về Client với flag `is_final`.
+**Key Characteristics:**
+- Low latency (< 500ms)
+- Continuous transcription updates
+- Text contains full transcription (replace strategy)
 
 ---
 
@@ -56,29 +42,30 @@ Sử dụng giao thức WebSocket với 2 loại bản tin:
 
 ### 3\. Latency Optimization Techniques (Kỹ thuật giảm trễ)
 
-Để đảm bảo phản hồi \< 1.5s, áp dụng các kỹ thuật sau:
+Để đảm bảo phản hồi \< 500ms, áp dụng các kỹ thuật sau:
 
 1.  **Multiprocessing Queue:**
 
-    - Thay vì dùng `threading` (bị giới hạn bởi Python GIL), sử dụng `torch.multiprocessing`. Mỗi Model Worker là một Process hệ điều hành riêng biệt.
+    - Thay vì dùng `threading` (bị giới hạn bởi Python GIL), sử dụng `multiprocessing`. Mỗi Model Worker là một Process hệ điều hành riêng biệt.
     - Giao tiếp giữa WebSocket Process và AI Process qua `multiprocessing.Queue`.
 
-2.  **Energy-based VAD (Bộ lọc khoảng lặng):**
+2.  **Result Deduplication:**
 
-    - Không bao giờ gửi khoảng lặng vào model Whisper (tốn tài nguyên vô ích).
-    - Sử dụng **energy-based detection** thay vì Silero VAD để giảm overhead.
-    - Logic: Tính RMS của samples, so sánh với `SILENCE_THRESHOLD = 0.0005`.
+    - Zipformer is streaming model, sends updates frequently.
+    - Only send result to client when text actually changes.
+    - Prevents flooding client with duplicate results.
 
-3.  **Keep-Alive Models:**
+3.  **Keep-Alive Model:**
 
-    - Model Zipformer load rất nhanh, nhưng Whisper/PhoWhisper mất 2-5s để load vào RAM.
-    - **Solution:** Khi khởi động server, load sẵn Zipformer (thường trực). Whisper/PhoWhisper load theo cơ chế Lazy Loading (load khi có request đầu tiên) và giữ trong RAM khoảng 5 phút (TTL) nếu không ai dùng mới giải phóng.
+    - Model Zipformer load rất nhanh (~1-2s).
+    - Model được giữ trong memory sau khi load.
+    - Subsequent requests don't need to reload model.
 
 ---
 
 ### 4\. Client-Side Rendering Logic (Giải pháp hiển thị FE)
 
-Để trải nghiệm người dùng mượt mà dù backend xử lý khác nhau:
+Để trải nghiệm người dùng mượt mà:
 
 - **Text Buffer Management:** Frontend duy trì một mảng `transcript_segments`.
 - **Handling Updates:**
