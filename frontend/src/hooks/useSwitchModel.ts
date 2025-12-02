@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { switchModelMutation, getModelStatusQueryKey } from '@/client/@tanstack/react-query.gen'
 import type { SwitchModelResponse } from '@/client/types.gen'
 
-export type ModelId = 'zipformer' | 'faster-whisper' | 'phowhisper' | 'hkab'
+export type ModelId = 'zipformer'
 
 export interface UseSwitchModelOptions {
   /** Callback when model switch is successful */

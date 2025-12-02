@@ -41,9 +41,9 @@ const DEFAULT_LATENCY: Record<WorkflowType, [number, number]> = {
  * // Get workflow-aware model options for Select
  * <Select options={modelOptions} />
  * 
- * // Check if selected model is buffered (needs processing indicator)
- * if (isBufferedModel('faster-whisper')) {
- *   // Show "Processing audio..." instead of interim text
+ * // Zipformer is a streaming model
+ * if (isStreamingModel('zipformer')) {
+ *   // Show real-time interim text
  * }
  * ```
  */
@@ -71,8 +71,7 @@ export function useModels(options: UseModelsOptions = {}) {
 
   /**
    * Get workflow type for a model
-   * - streaming: emits is_final=false frequently (Zipformer, HKAB)
-   * - buffered: emits is_final=true only after processing buffer (Whisper, PhoWhisper)
+   * - streaming: emits is_final=false frequently (Zipformer)
    */
   const getWorkflowType = useCallback(
     (modelId: string): WorkflowType => {

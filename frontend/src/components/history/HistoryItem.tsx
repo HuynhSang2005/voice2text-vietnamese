@@ -25,9 +25,6 @@ export interface HistoryItemProps {
 // Model color mapping
 const MODEL_COLORS: Record<string, string> = {
   'zipformer': 'blue',
-  'faster-whisper': 'green',
-  'phowhisper': 'purple',
-  'hkab': 'orange',
 }
 
 /**

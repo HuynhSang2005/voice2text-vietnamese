@@ -281,7 +281,7 @@ export const getHistoryInfiniteOptions = (options?: Options<GetHistoryData>) =>
  *
  * Manually switch the active model.
  *
- * Available models: zipformer, faster-whisper, phowhisper, hkab
+ * Available models: zipformer
  */
 export const switchModelMutation = (
   options?: Partial<Options<SwitchModelData>>,

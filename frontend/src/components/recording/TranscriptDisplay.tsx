@@ -23,7 +23,7 @@ export interface TranscriptDisplayProps {
    */
   isConnecting?: boolean
   /**
-   * Whether the model is buffered (Whisper-style, processes in batches)
+   * Whether the model is buffered (processes in batches)
    * When true, shows "Processing..." instead of interim text
    */
   isBufferedModel?: boolean
@@ -62,8 +62,7 @@ export interface TranscriptDisplayProps {
  * Real-time transcript display component
  * Shows finalized text and interim (in-progress) text with distinct styling
  * 
- * For streaming models (Zipformer, HKAB): Shows real-time interim text
- * For buffered models (Whisper, PhoWhisper): Shows "Processing audio..." indicator
+ * For streaming models (Zipformer): Shows real-time interim text
  * 
  * @example
  * ```tsx
@@ -71,8 +70,8 @@ export interface TranscriptDisplayProps {
  *   transcript={transcript}
  *   interimText={interimText}
  *   isRecording={isRecording}
- *   isBufferedModel={isBufferedModel('faster-whisper')}
- *   expectedLatencyMs={getExpectedLatency('faster-whisper')}
+ *   isBufferedModel={false}
+ *   expectedLatencyMs={getExpectedLatency('zipformer')}
  * />
  * ```
  */

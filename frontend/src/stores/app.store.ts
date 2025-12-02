@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { devtools, persist } from 'zustand/middleware'
 
-export type ModelId = 'zipformer' | 'faster-whisper' | 'phowhisper' | 'hkab'
+export type ModelId = 'zipformer'
 
 export type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'error'
 

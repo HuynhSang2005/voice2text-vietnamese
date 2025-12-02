@@ -63,9 +63,6 @@ function HomePage() {
   // Fallback options when API is loading
   const modelOptions = apiModelOptions || [
     { value: 'zipformer', label: 'Zipformer (Nhanh)', description: 'Fast streaming', workflowType: 'streaming' as const, expectedLatencyMs: [100, 500] as [number, number], isStreaming: true },
-    { value: 'faster-whisper', label: 'Faster Whisper', description: 'Baseline', workflowType: 'buffered' as const, expectedLatencyMs: [2000, 8000] as [number, number], isStreaming: false },
-    { value: 'phowhisper', label: 'PhoWhisper (Tiếng Việt)', description: 'Vietnamese optimized', workflowType: 'buffered' as const, expectedLatencyMs: [2000, 8000] as [number, number], isStreaming: false },
-    { value: 'hkab', label: 'HKAB', description: 'Community model', workflowType: 'streaming' as const, expectedLatencyMs: [100, 500] as [number, number], isStreaming: true },
   ]
 
   const handleModelChange = (value: string) => {

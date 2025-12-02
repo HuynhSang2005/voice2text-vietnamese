@@ -20,9 +20,6 @@ export interface HistoryFiltersProps {
 const MODEL_OPTIONS = [
   { value: '', label: 'Tất cả models' },
   { value: 'zipformer', label: 'Zipformer' },
-  { value: 'faster-whisper', label: 'Faster Whisper' },
-  { value: 'phowhisper', label: 'PhoWhisper' },
-  { value: 'hkab', label: 'HKAB' },
 ]
 
 /**

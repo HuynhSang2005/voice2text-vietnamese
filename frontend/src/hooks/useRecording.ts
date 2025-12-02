@@ -44,7 +44,7 @@ export function useRecording(options: UseRecordingOptions = {}) {
   } = useAppStore()
 
   // Model helpers for dynamic timeout
-  const { getRecommendedTimeout, isBufferedModel } = useModels()
+  const { getRecommendedTimeout } = useModels()
 
   // Track if we initiated the recording
   const recordingInitiatedRef = useRef(false)
@@ -194,18 +194,15 @@ export function useRecording(options: UseRecordingOptions = {}) {
     audioRecorderRef.current.stop()
 
     // Send flush signal to force transcribe remaining buffer
-    // This is important for Whisper-based models that buffer audio
     const flushed = transcriptionRef.current.flush()
     
     if (flushed) {
       // Get dynamic timeout based on selected model
-      // Buffered models (Whisper) need longer timeout than streaming models (Zipformer)
       const currentModel = selectedModelRef.current
       const recommendedTimeout = getRecommendedTimeout(currentModel)
       const maxWait = Math.max(recommendedTimeout, 5000) // At least 5s
       
-      const isBuffered = isBufferedModel(currentModel)
-      console.log(`[Recording] Model: ${currentModel}, isBuffered: ${isBuffered}, timeout: ${maxWait}ms`)
+      console.log(`[Recording] Model: ${currentModel}, timeout: ${maxWait}ms`)
       
       const checkInterval = 100 // 100ms - polling
       let waited = 0
@@ -233,8 +230,7 @@ export function useRecording(options: UseRecordingOptions = {}) {
         }
         
         // If transcript has been stable for 1s after receiving data, we're done
-        // Use longer stable time for buffered models since they process in batches
-        const stableThreshold = isBuffered ? 1500 : 1000
+        const stableThreshold = 1000
         if (stableTime >= stableThreshold && hadAnyData) {
           console.log(`[Recording] Transcript stable for ${stableThreshold}ms, proceeding to disconnect`)
           break
@@ -267,7 +263,7 @@ export function useRecording(options: UseRecordingOptions = {}) {
     recordingInitiatedRef.current = false
 
     console.log('[Recording] Stopped')
-  }, [setIsRecording, getRecommendedTimeout, isBufferedModel])
+  }, [setIsRecording, getRecommendedTimeout])
 
   /**
    * Toggle recording state

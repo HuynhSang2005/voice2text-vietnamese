@@ -124,7 +124,7 @@ export const getHistory = <ThrowOnError extends boolean = false>(
  *
  * Manually switch the active model.
  *
- * Available models: zipformer, faster-whisper, phowhisper, hkab
+ * Available models: zipformer
  */
 export const switchModel = <ThrowOnError extends boolean = false>(
   options: Options<SwitchModelData, ThrowOnError>,
