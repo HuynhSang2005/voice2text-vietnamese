@@ -8,8 +8,14 @@ sqlmodel>=0.0.22
 sqlalchemy[asyncio]>=2.0.0
 aiosqlite>=0.20.0
 
-# AI Models - Zipformer only
+# AI Models - Zipformer STT
 sherpa-onnx>=1.10.0
+
+# AI Models - ViSoBERT-HSD (Hate Speech Detection)
+transformers>=4.35.0
+safetensors>=0.4.0
+optimum[onnxruntime]>=1.14.0
+onnxruntime>=1.16.0
 
 # Audio Processing
 numpy>=1.26.0
