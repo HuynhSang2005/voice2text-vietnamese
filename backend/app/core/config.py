@@ -17,6 +17,12 @@ class Settings(BaseSettings):
     # Model Storage
     MODEL_STORAGE_PATH: str = "models_storage"
     
+    # Content Moderation (ViSoBERT-HSD)
+    ENABLE_CONTENT_MODERATION: bool = True
+    MODERATION_CONFIDENCE_THRESHOLD: float = 0.7
+    # Only run moderation on final transcription results
+    MODERATION_ON_FINAL_ONLY: bool = True
+    
     # Database
     DATABASE_URL: str = "sqlite+aiosqlite:///database.db"
     DATABASE_ECHO: bool = False
@@ -32,6 +38,11 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+
+def get_settings() -> Settings:
+    """Get the settings instance (for dependency injection)."""
+    return settings
 
 
 # Configure logging

@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import uuid
 from typing import List
 from datetime import datetime
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, HTTPException, status
@@ -9,10 +10,12 @@ from sqlmodel import select
 
 from app.core.manager import manager
 from app.core.database import get_session, engine
+from app.core.config import get_settings
 from app.models.schema import TranscriptionLog
 from app.models.protocols import ModelInfo, ModelStatus, SwitchModelResponse
 
 logger = logging.getLogger(__name__)
+settings = get_settings()
 
 router = APIRouter(tags=["Speech-to-Text"])
 
@@ -83,6 +86,8 @@ async def websocket_endpoint(websocket: WebSocket):
     2. Client sends config message (optional): {"type": "config", "model": "zipformer"}
     3. Client sends binary audio data (Int16 PCM, 16kHz)
     4. Server sends transcription results: {"text": "...", "is_final": bool, "model": "..."}
+    5. If content moderation enabled, server sends moderation results: 
+       {"type": "moderation", "label": "CLEAN|OFFENSIVE|HATE", "confidence": float, ...}
     """
     await websocket.accept()
     
@@ -90,6 +95,11 @@ async def websocket_endpoint(websocket: WebSocket):
     # Session ID will be set by client via start_session message
     # Fallback to None until client sends session ID
     session_id = None
+    
+    # Content moderation state
+    moderation_enabled = settings.ENABLE_CONTENT_MODERATION
+    detector_input_q = None
+    detector_output_q = None
     
     try:
         # 1. Wait for config message (Optional, or first message)
@@ -101,6 +111,9 @@ async def websocket_endpoint(websocket: WebSocket):
                 if config.get("type") == "config":
                     model_name = config.get("model", "zipformer")
                     logger.info(f"Client requested model: {model_name}")
+                    # Allow client to override moderation setting
+                    if "moderation" in config:
+                        moderation_enabled = config.get("moderation", True)
             except json.JSONDecodeError:
                 pass
         
@@ -112,12 +125,26 @@ async def websocket_endpoint(websocket: WebSocket):
             await websocket.close(code=status.WS_1011_INTERNAL_ERROR, reason="Failed to start model")
             return
 
+        # Start detector if moderation is enabled
+        if moderation_enabled:
+            try:
+                manager.start_detector("visobert-hsd")
+                detector_input_q, detector_output_q = manager.get_detector_queues()
+                if detector_input_q and detector_output_q:
+                    logger.info("Content moderation enabled with visobert-hsd")
+                else:
+                    logger.warning("Failed to get detector queues, moderation disabled")
+                    moderation_enabled = False
+            except Exception as e:
+                logger.warning(f"Failed to start detector: {e}, moderation disabled")
+                moderation_enabled = False
+
         # If first message was audio, put it in queue
         if "bytes" in first_msg:
             await asyncio.to_thread(input_q.put, first_msg["bytes"])
 
         async def receive_audio():
-            nonlocal session_id, model_name, input_q, output_q
+            nonlocal session_id, model_name, input_q, output_q, moderation_enabled
             try:
                 audio_packet_count = 0
                 while True:
@@ -147,6 +174,11 @@ async def websocket_endpoint(websocket: WebSocket):
                                     model_name = new_model
                                     manager.start_model(model_name)
                                     input_q, output_q = manager.get_queues(model_name)
+                                # Allow toggling moderation mid-session
+                                if "moderation" in data:
+                                    moderation_enabled = data.get("moderation", True)
+                                    manager.set_moderation_enabled(moderation_enabled)
+                                    logger.info(f"Moderation toggled to: {moderation_enabled}")
                                     
                             elif msg_type == "start_session":
                                 new_session_id = data.get("sessionId")
@@ -183,6 +215,7 @@ async def websocket_endpoint(websocket: WebSocket):
         ws_closed = asyncio.Event()
         
         async def send_results():
+            nonlocal detector_input_q, moderation_enabled
             try:
                 result_count = 0
                 # Keep running until receive ended AND queue is empty for a while
@@ -211,8 +244,27 @@ async def websocket_endpoint(websocket: WebSocket):
                                 logger.warning(f"Failed to send result (client disconnected): {send_err}")
                                 ws_closed.set()  # Mark WebSocket as closed on send error
                             
-                            # Save to DB only if we have a session ID from client
+                            # Content moderation: send text to detector if is_final and moderation enabled
+                            is_final = result.get("is_final", False)
                             text_content = result.get("text", "").strip()
+                            
+                            if (is_final and text_content and moderation_enabled 
+                                and detector_input_q is not None
+                                and (not settings.MODERATION_ON_FINAL_ONLY or is_final)):
+                                # Send text to detector with unique request_id
+                                request_id = str(uuid.uuid4())[:8]
+                                detector_request = {
+                                    "request_id": request_id,
+                                    "text": text_content,
+                                    "session_id": session_id
+                                }
+                                try:
+                                    await asyncio.to_thread(detector_input_q.put_nowait, detector_request)
+                                    logger.debug(f"Sent text to detector: '{text_content[:30]}...'")
+                                except Exception as e:
+                                    logger.warning(f"Failed to send to detector: {e}")
+                            
+                            # Save to DB only if we have a session ID from client
                             latency_ms = result.get("latency_ms", 0.0)
                             workflow_type = result.get("workflow_type", "streaming")  # Default to streaming for zipformer
                             if text_content and session_id:
@@ -240,9 +292,67 @@ async def websocket_endpoint(websocket: WebSocket):
             except Exception as e:
                 logger.error(f"Error sending results: {e}", exc_info=True)
 
-        # Run both tasks concurrently
+        async def send_moderation_results():
+            """Send content moderation results from detector to client."""
+            nonlocal detector_output_q, moderation_enabled
+            if not moderation_enabled or detector_output_q is None:
+                return
+                
+            try:
+                while True:
+                    # Wait until receive is done or ws is closed
+                    if receive_ended.is_set() and ws_closed.is_set():
+                        break
+                        
+                    try:
+                        is_empty = await asyncio.to_thread(lambda: detector_output_q.empty())
+                        if not is_empty:
+                            moderation_result = await asyncio.to_thread(detector_output_q.get_nowait)
+                            
+                            if ws_closed.is_set():
+                                logger.debug("WebSocket closed, discarding moderation result")
+                                continue
+                            
+                            # Format moderation result for client
+                            client_result = {
+                                "type": "moderation",
+                                "request_id": moderation_result.get("request_id"),
+                                "label": moderation_result.get("label"),
+                                "label_id": moderation_result.get("label_id"),
+                                "confidence": moderation_result.get("confidence"),
+                                "is_flagged": moderation_result.get("is_flagged", False),
+                                "latency_ms": moderation_result.get("latency_ms", 0)
+                            }
+                            
+                            try:
+                                await websocket.send_json(client_result)
+                                logger.info(f"Sent moderation result: {client_result['label']} ({client_result['confidence']:.2%})")
+                            except Exception as send_err:
+                                logger.warning(f"Failed to send moderation result: {send_err}")
+                                ws_closed.set()
+                        else:
+                            await asyncio.sleep(0.05)
+                            
+                        # Exit if receive ended and no more results expected
+                        if receive_ended.is_set():
+                            # Give extra time for pending moderation results
+                            await asyncio.sleep(0.5)
+                            is_still_empty = await asyncio.to_thread(lambda: detector_output_q.empty())
+                            if is_still_empty:
+                                break
+                                
+                    except Exception as e:
+                        if "Empty" not in str(type(e).__name__):
+                            logger.error(f"Error in send_moderation_results: {e}")
+                        await asyncio.sleep(0.05)
+                        
+            except Exception as e:
+                logger.error(f"Error in moderation results loop: {e}", exc_info=True)
+
+        # Run tasks concurrently
         receive_task = asyncio.create_task(receive_audio())
         send_task = asyncio.create_task(send_results())
+        moderation_task = asyncio.create_task(send_moderation_results()) if moderation_enabled else None
         
         # Wait for receive to finish first (client disconnect or error)
         await receive_task
@@ -259,6 +369,19 @@ async def websocket_endpoint(websocket: WebSocket):
                 await send_task
             except asyncio.CancelledError:
                 pass
+        
+        # Wait for moderation task if enabled
+        if moderation_task:
+            try:
+                await asyncio.wait_for(moderation_task, timeout=5.0)
+                logger.info("moderation task completed successfully")
+            except asyncio.TimeoutError:
+                logger.warning("moderation task timed out, cancelling")
+                moderation_task.cancel()
+                try:
+                    await moderation_task
+                except asyncio.CancelledError:
+                    pass
             
     except WebSocketDisconnect:
         logger.info("WebSocket disconnected")
@@ -360,3 +483,45 @@ async def get_model_status():
         is_loaded=status == "ready",
         status=status
     )
+
+
+@router.get("/api/v1/moderation/status", summary="Get content moderation status")
+async def get_moderation_status():
+    """Get the current status of content moderation."""
+    return {
+        "enabled": manager.moderation_enabled,
+        "current_detector": manager.current_detector,
+        "loading_detector": manager.loading_detector,
+        "config": {
+            "default_enabled": settings.ENABLE_CONTENT_MODERATION,
+            "confidence_threshold": settings.MODERATION_CONFIDENCE_THRESHOLD,
+            "on_final_only": settings.MODERATION_ON_FINAL_ONLY
+        }
+    }
+
+
+@router.post("/api/v1/moderation/toggle", summary="Toggle content moderation")
+async def toggle_moderation(enabled: bool = True):
+    """
+    Enable or disable content moderation.
+    
+    - When enabled: Starts the detector if not running, enables moderation
+    - When disabled: Keeps detector running but stops sending moderation results
+    """
+    if enabled:
+        if not manager.current_detector:
+            try:
+                manager.start_detector("visobert-hsd")
+            except Exception as e:
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail=f"Failed to start detector: {str(e)}"
+                )
+        manager.set_moderation_enabled(True)
+    else:
+        manager.set_moderation_enabled(False)
+    
+    return {
+        "enabled": manager.moderation_enabled,
+        "current_detector": manager.current_detector
+    }
