@@ -82,9 +82,12 @@ class HateDetectorWorker(BaseWorker):
         # Prefer INT8 quantized model
         if os.path.exists(int8_path) and os.listdir(int8_path):
             model_path = int8_path
+            # INT8 quantized model uses 'model_quantized.onnx' filename
+            file_name = "model_quantized.onnx"
             self.logger.info(f"Loading INT8 quantized model from {model_path}")
         elif os.path.exists(onnx_path) and os.listdir(onnx_path):
             model_path = onnx_path
+            file_name = "model.onnx"
             self.logger.info(f"Loading FP32 ONNX model from {model_path}")
         else:
             raise FileNotFoundError(
@@ -95,9 +98,10 @@ class HateDetectorWorker(BaseWorker):
         # Load tokenizer
         self.tokenizer = AutoTokenizer.from_pretrained(model_path)
         
-        # Load ONNX model
+        # Load ONNX model with correct file name
         self.model = ORTModelForSequenceClassification.from_pretrained(
             model_path,
+            file_name=file_name,
             provider="CPUExecutionProvider"
         )
         
