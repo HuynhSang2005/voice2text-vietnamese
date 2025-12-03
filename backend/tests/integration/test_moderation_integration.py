@@ -211,6 +211,25 @@ class TestModerationEndpoints:
         assert "confidence_threshold" in data["config"]
         assert "on_final_only" in data["config"]
     
+    def test_get_moderation_status_schema_validation(self, client):
+        """Test that moderation status response follows ModerationStatus schema."""
+        response = client.get("/api/v1/moderation/status")
+        assert response.status_code == 200
+        
+        data = response.json()
+        
+        # Validate types
+        assert isinstance(data["enabled"], bool)
+        assert data["current_detector"] is None or isinstance(data["current_detector"], str)
+        assert data["loading_detector"] is None or isinstance(data["loading_detector"], str)
+        
+        # Validate config structure
+        config = data["config"]
+        assert isinstance(config["default_enabled"], bool)
+        assert isinstance(config["confidence_threshold"], (int, float))
+        assert 0 <= config["confidence_threshold"] <= 1
+        assert isinstance(config["on_final_only"], bool)
+    
     def test_toggle_moderation_enable(self, client):
         """Test enabling moderation via POST /api/v1/moderation/toggle."""
         with patch('app.api.endpoints.manager') as mock_manager:
@@ -236,6 +255,46 @@ class TestModerationEndpoints:
             assert response.status_code == 200
             
             mock_manager.set_moderation_enabled.assert_called_with(False)
+    
+    def test_toggle_moderation_response_schema(self, client):
+        """Test that toggle response follows ModerationToggleResponse schema."""
+        with patch('app.api.endpoints.manager') as mock_manager:
+            mock_manager.current_detector = "visobert-hsd"
+            mock_manager.moderation_enabled = True
+            mock_manager.set_moderation_enabled = Mock()
+            
+            response = client.post("/api/v1/moderation/toggle", params={"enabled": True})
+            assert response.status_code == 200
+            
+            data = response.json()
+            assert "enabled" in data
+            assert "current_detector" in data
+            assert isinstance(data["enabled"], bool)
+    
+    def test_toggle_moderation_detector_already_running(self, client):
+        """Test toggle when detector is already running doesn't restart it."""
+        with patch('app.api.endpoints.manager') as mock_manager:
+            mock_manager.current_detector = "visobert-hsd"  # Already running
+            mock_manager.moderation_enabled = True
+            mock_manager.set_moderation_enabled = Mock()
+            mock_manager.start_detector = Mock()  # Should not be called
+            
+            response = client.post("/api/v1/moderation/toggle", params={"enabled": True})
+            assert response.status_code == 200
+            
+            # start_detector should NOT be called if detector already running
+            mock_manager.start_detector.assert_not_called()
+            mock_manager.set_moderation_enabled.assert_called_with(True)
+    
+    def test_toggle_moderation_start_failure(self, client):
+        """Test toggle returns 503 when detector fails to start."""
+        with patch('app.api.endpoints.manager') as mock_manager:
+            mock_manager.current_detector = None
+            mock_manager.start_detector = Mock(side_effect=Exception("Model not found"))
+            
+            response = client.post("/api/v1/moderation/toggle", params={"enabled": True})
+            assert response.status_code == 503
+            assert "Failed to start detector" in response.json()["detail"]
 
 
 class TestWebSocketModeration:

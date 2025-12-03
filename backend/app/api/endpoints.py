@@ -12,7 +12,14 @@ from app.core.manager import manager
 from app.core.database import get_session, engine
 from app.core.config import get_settings
 from app.models.schema import TranscriptionLog
-from app.models.protocols import ModelInfo, ModelStatus, SwitchModelResponse
+from app.models.protocols import (
+    ModelInfo, 
+    ModelStatus, 
+    SwitchModelResponse,
+    ModerationStatus,
+    ModerationConfig,
+    ModerationToggleResponse
+)
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -485,22 +492,22 @@ async def get_model_status():
     )
 
 
-@router.get("/api/v1/moderation/status", summary="Get content moderation status")
+@router.get("/api/v1/moderation/status", response_model=ModerationStatus, summary="Get content moderation status")
 async def get_moderation_status():
     """Get the current status of content moderation."""
-    return {
-        "enabled": manager.moderation_enabled,
-        "current_detector": manager.current_detector,
-        "loading_detector": manager.loading_detector,
-        "config": {
-            "default_enabled": settings.ENABLE_CONTENT_MODERATION,
-            "confidence_threshold": settings.MODERATION_CONFIDENCE_THRESHOLD,
-            "on_final_only": settings.MODERATION_ON_FINAL_ONLY
-        }
-    }
+    return ModerationStatus(
+        enabled=manager.moderation_enabled,
+        current_detector=manager.current_detector,
+        loading_detector=manager.loading_detector,
+        config=ModerationConfig(
+            default_enabled=settings.ENABLE_CONTENT_MODERATION,
+            confidence_threshold=settings.MODERATION_CONFIDENCE_THRESHOLD,
+            on_final_only=settings.MODERATION_ON_FINAL_ONLY
+        )
+    )
 
 
-@router.post("/api/v1/moderation/toggle", summary="Toggle content moderation")
+@router.post("/api/v1/moderation/toggle", response_model=ModerationToggleResponse, summary="Toggle content moderation")
 async def toggle_moderation(enabled: bool = True):
     """
     Enable or disable content moderation.
@@ -521,7 +528,7 @@ async def toggle_moderation(enabled: bool = True):
     else:
         manager.set_moderation_enabled(False)
     
-    return {
-        "enabled": manager.moderation_enabled,
-        "current_detector": manager.current_detector
-    }
+    return ModerationToggleResponse(
+        enabled=manager.moderation_enabled,
+        current_detector=manager.current_detector
+    )

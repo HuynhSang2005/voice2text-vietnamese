@@ -1,5 +1,5 @@
 from typing import Optional, Literal
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class ModelInfo(BaseModel):
@@ -27,11 +27,78 @@ class SwitchModelResponse(BaseModel):
     current_model: str
 
 
+# ========== Content Moderation Schemas ==========
+
+class ContentModeration(BaseModel):
+    """Content moderation result from ViSoBERT-HSD detector.
+    
+    Labels:
+    - CLEAN (0): No harmful content detected
+    - OFFENSIVE (1): Offensive/vulgar language detected
+    - HATE (2): Hate speech detected
+    """
+    label: Literal["CLEAN", "OFFENSIVE", "HATE"]
+    label_id: int = Field(ge=0, le=2, description="Label ID: 0=CLEAN, 1=OFFENSIVE, 2=HATE")
+    confidence: float = Field(ge=0.0, le=1.0, description="Confidence score (0-1)")
+    is_flagged: bool = Field(description="True if label is OFFENSIVE or HATE")
+
+
+class ModerationResult(BaseModel):
+    """Full moderation result sent via WebSocket as separate message."""
+    type: Literal["moderation"] = "moderation"
+    request_id: Optional[str] = None
+    label: Literal["CLEAN", "OFFENSIVE", "HATE"]
+    label_id: int = Field(ge=0, le=2)
+    confidence: float = Field(ge=0.0, le=1.0)
+    is_flagged: bool
+    latency_ms: float = Field(ge=0, description="Inference latency in milliseconds")
+
+
+class ModerationConfig(BaseModel):
+    """Configuration for content moderation feature."""
+    default_enabled: bool = Field(description="Whether moderation is enabled by default")
+    confidence_threshold: float = Field(
+        ge=0.0, le=1.0, 
+        description="Minimum confidence to consider a result valid"
+    )
+    on_final_only: bool = Field(description="Only run moderation on is_final=True results")
+
+
+class ModerationStatus(BaseModel):
+    """Current status of content moderation feature."""
+    enabled: bool = Field(description="Whether content moderation is currently enabled")
+    current_detector: Optional[str] = Field(description="Name of the current detector model")
+    loading_detector: Optional[str] = Field(description="Name of detector being loaded (if any)")
+    config: ModerationConfig
+
+
+class ModerationToggleResponse(BaseModel):
+    """Response for moderation toggle operation."""
+    enabled: bool
+    current_detector: Optional[str]
+
+
+# ========== Transcription Schemas ==========
+
 class TranscriptionResult(BaseModel):
-    """Real-time transcription result sent via WebSocket."""
+    """Real-time transcription result sent via WebSocket.
+    
+    For streaming workflow (Zipformer):
+    - is_final=False: Intermediate results, may change
+    - is_final=True: Final result for current segment
+    
+    content_moderation is included only when:
+    - is_final=True
+    - Moderation is enabled
+    - Moderation result is available
+    """
     text: str
     is_final: bool
     model: str
+    workflow_type: Literal["streaming", "buffered"] = "streaming"
+    latency_ms: Optional[float] = None
+    # Content moderation result (optional - only on is_final=True if enabled)
+    content_moderation: Optional[ContentModeration] = None
 
 
 class WebSocketConfig(BaseModel):
@@ -39,3 +106,5 @@ class WebSocketConfig(BaseModel):
     type: str = "config"
     model: str = "zipformer"
     sample_rate: int = 16000
+    # Content moderation settings
+    moderation: bool = True  # Enable/disable moderation for this session
