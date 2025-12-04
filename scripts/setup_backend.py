@@ -6,19 +6,21 @@ Complete setup script for new users cloning the Vietnamese Speech-to-Text reposi
 This script automates the entire backend setup process including:
 - Python virtual environment creation
 - Dependency installation  
-- Zipformer model download
+- Zipformer & ViSoBERT-HSD model download
 - Database initialization
 - Environment configuration
 - Health checks
 
 Usage:
-    python scripts/setup_backend.py           # Full setup
+    python scripts/setup_backend.py                # Full setup (both models)
     python scripts/setup_backend.py --skip-models  # Skip model downloads
-    python scripts/setup_backend.py --verify  # Only run verification
+    python scripts/setup_backend.py --verify       # Only run verification
+    python scripts/setup_backend.py --zipformer    # Setup only Zipformer
+    python scripts/setup_backend.py --visobert     # Setup only ViSoBERT-HSD
 
 Requirements:
     - Python 3.10+ installed and in PATH
-    - ~200MB disk space for Zipformer model
+    - ~500MB disk space for both models
     - Internet connection
 
 Author: Auto-generated for Vietnamese STT Project
@@ -60,7 +62,7 @@ def print_banner():
 ║                                                              ║
 ║    🎤 Vietnamese Speech-to-Text Backend Setup                ║
 ║                                                              ║
-║    Real-time transcription with Zipformer model              ║
+║    Real-time transcription with Zipformer + ViSoBERT-HSD     ║
 ║                                                              ║
 ╚══════════════════════════════════════════════════════════════╝
     """
@@ -309,14 +311,17 @@ def step_install_dependencies() -> bool:
         return False
 
 
-def step_setup_models() -> bool:
+def step_setup_models(model_type: str = "all") -> bool:
     """
-    Step 4: Download and setup Zipformer model.
+    Step 4: Download and setup AI models.
+    
+    Args:
+        model_type: "all", "zipformer", or "visobert"
         
     Returns:
         True if successful
     """
-    print_header("Step 4: Setting Up Zipformer Model")
+    print_header("Step 4: Setting Up AI Models")
     
     venv_python = get_venv_python()
     setup_models_script = SCRIPT_DIR / "setup_models.py"
@@ -325,11 +330,23 @@ def step_setup_models() -> bool:
         print_error(f"Model setup script not found: {setup_models_script}")
         return False
     
-    print_info("Downloading Zipformer model (~200MB)...")
+    # Build command based on model type
+    cmd = [str(venv_python), str(setup_models_script)]
+    
+    if model_type == "zipformer":
+        cmd.append("--zipformer")
+        print_info("Downloading Zipformer model (~200MB)...")
+    elif model_type == "visobert":
+        cmd.append("--visobert")
+        print_info("Setting up ViSoBERT-HSD model (~200MB + ONNX export)...")
+    else:
+        cmd.append("--all")
+        print_info("Downloading both models (~500MB total)...")
+    
     print_info("This may take a few minutes depending on your connection...")
     
     try:
-        run_command([str(venv_python), str(setup_models_script)], capture_output=False)
+        run_command(cmd, capture_output=False)
         print_success("Model setup completed ✓")
         return True
     except Exception as e:
@@ -475,18 +492,19 @@ def step_verify_installation() -> bool:
     print_step("Checking model directories")
     
     model_checks = [
-        ("zipformer/hynt-zipformer-30M-6000h", "encoder-epoch-20-avg-10.int8.onnx"),
+        ("zipformer/hynt-zipformer-30M-6000h", "encoder-epoch-20-avg-10.int8.onnx", "Zipformer"),
+        ("visobert-hsd/onnx-int8", "model.onnx", "ViSoBERT-HSD ONNX INT8"),
     ]
     
-    for model_path, check_file in model_checks:
+    for model_path, check_file, model_name in model_checks:
         model_dir = MODELS_DIR / model_path
         if model_dir.exists():
             if check_file and not (model_dir / check_file).exists():
-                print_warning(f"{model_path}: directory exists but missing files")
+                print_warning(f"{model_name}: directory exists but missing files")
             else:
-                print_success(f"{model_path} ✓")
+                print_success(f"{model_name} ✓")
         else:
-            print_warning(f"{model_path} not found (may need to run model setup)")
+            print_warning(f"{model_name} not found (may need to run model setup)")
     
     # Test import of main app
     print_step("Testing application import")
@@ -515,13 +533,15 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-    python scripts/setup_backend.py           # Full setup
+    python scripts/setup_backend.py                # Full setup (both models)
     python scripts/setup_backend.py --skip-models  # Skip model downloads
-    python scripts/setup_backend.py --verify  # Only verify existing installation
+    python scripts/setup_backend.py --verify       # Only verify existing installation
+    python scripts/setup_backend.py --zipformer    # Setup only Zipformer model
+    python scripts/setup_backend.py --visobert     # Setup only ViSoBERT-HSD model
 
 Notes:
     - Requires Python 3.10+
-    - Full setup needs ~200MB disk space for Zipformer model
+    - Full setup needs ~500MB disk space for both models
     - Model download may take a few minutes
         """
     )
@@ -541,6 +561,16 @@ Notes:
         action="store_true",
         help="Skip venv creation (use system Python)"
     )
+    parser.add_argument(
+        "--zipformer", "-z",
+        action="store_true",
+        help="Setup only Zipformer model (skip ViSoBERT)"
+    )
+    parser.add_argument(
+        "--visobert", "-b",
+        action="store_true",
+        help="Setup only ViSoBERT-HSD model (skip Zipformer)"
+    )
     
     args = parser.parse_args()
     
@@ -555,6 +585,16 @@ Notes:
         success = step_verify_installation()
         return 0 if success else 1
     
+    # Determine which models to setup
+    if args.zipformer and args.visobert:
+        model_type = "all"
+    elif args.zipformer:
+        model_type = "zipformer"
+    elif args.visobert:
+        model_type = "visobert"
+    else:
+        model_type = "all"
+    
     # Full setup
     steps = [
         ("Prerequisites", step_check_prerequisites),
@@ -566,7 +606,7 @@ Notes:
     steps.append(("Dependencies", step_install_dependencies))
     
     if not args.skip_models:
-        steps.append(("Zipformer Model", step_setup_models))
+        steps.append(("AI Models", lambda: step_setup_models(model_type)))
     
     steps.extend([
         ("Database", step_setup_database),
