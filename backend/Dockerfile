@@ -20,8 +20,17 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the rest of the application
 COPY . .
 
+# Pre-download ViSoBERT-HSD tokenizer files for faster startup
+# The ONNX model files are mounted via volume
+RUN python -c "from transformers import AutoTokenizer; AutoTokenizer.from_pretrained('visolex/visobert-hsd')" || true
+
 # Expose port
 EXPOSE 8000
 
+# Environment variables for content moderation
+ENV ENABLE_CONTENT_MODERATION=true
+ENV MODERATION_CONFIDENCE_THRESHOLD=0.7
+ENV MODERATION_ON_FINAL_ONLY=true
+
 # Command to run the application
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

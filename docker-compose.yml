@@ -7,12 +7,18 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./backend/models_storage:/app/models_storage
+      - ./backend/models_storage:/app/models_storage:ro
       - ./backend/database.db:/app/database.db
     environment:
-      - PROJECT_NAME="Real-time Vietnamese STT"
+      - PROJECT_NAME=Real-time Vietnamese STT
       - ALLOWED_ORIGINS=["http://localhost:5173","http://localhost"]
+      # Content Moderation (ViSoBERT-HSD)
+      - ENABLE_CONTENT_MODERATION=true
+      - MODERATION_CONFIDENCE_THRESHOLD=0.7
+      - MODERATION_ON_FINAL_ONLY=true
     restart: unless-stopped
+    # Increase shared memory for ONNX Runtime
+    shm_size: '512mb'
 
   frontend:
     build: ./frontend
