@@ -29,6 +29,39 @@ export const zModelStatus = z.object({
 })
 
 /**
+ * ModerationConfig
+ *
+ * Configuration for content moderation feature.
+ */
+export const zModerationConfig = z.object({
+  default_enabled: z.boolean(),
+  confidence_threshold: z.number().gte(0).lte(1),
+  on_final_only: z.boolean(),
+})
+
+/**
+ * ModerationStatus
+ *
+ * Current status of content moderation feature.
+ */
+export const zModerationStatus = z.object({
+  enabled: z.boolean(),
+  current_detector: z.union([z.string(), z.null()]),
+  loading_detector: z.union([z.string(), z.null()]),
+  config: zModerationConfig,
+})
+
+/**
+ * ModerationToggleResponse
+ *
+ * Response for moderation toggle operation.
+ */
+export const zModerationToggleResponse = z.object({
+  enabled: z.boolean(),
+  current_detector: z.union([z.string(), z.null()]),
+})
+
+/**
  * SwitchModelResponse
  *
  * Response for model switch operation.
@@ -142,3 +175,29 @@ export const zGetModelStatusData = z.object({
  * Successful Response
  */
 export const zGetModelStatusResponse = zModelStatus
+
+export const zGetModerationStatusData = z.object({
+  body: z.optional(z.never()),
+  path: z.optional(z.never()),
+  query: z.optional(z.never()),
+})
+
+/**
+ * Successful Response
+ */
+export const zGetModerationStatusResponse = zModerationStatus
+
+export const zToggleModerationData = z.object({
+  body: z.optional(z.never()),
+  path: z.optional(z.never()),
+  query: z.optional(
+    z.object({
+      enabled: z.optional(z.boolean()).default(true),
+    }),
+  ),
+})
+
+/**
+ * Successful Response
+ */
+export const zToggleModerationResponse = zModerationToggleResponse

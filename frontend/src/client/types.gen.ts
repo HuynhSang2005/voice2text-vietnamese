@@ -63,6 +63,75 @@ export type ModelStatus = {
 }
 
 /**
+ * ModerationConfig
+ *
+ * Configuration for content moderation feature.
+ */
+export type ModerationConfig = {
+  /**
+   * Default Enabled
+   *
+   * Whether moderation is enabled by default
+   */
+  default_enabled: boolean
+  /**
+   * Confidence Threshold
+   *
+   * Minimum confidence to consider a result valid
+   */
+  confidence_threshold: number
+  /**
+   * On Final Only
+   *
+   * Only run moderation on is_final=True results
+   */
+  on_final_only: boolean
+}
+
+/**
+ * ModerationStatus
+ *
+ * Current status of content moderation feature.
+ */
+export type ModerationStatus = {
+  /**
+   * Enabled
+   *
+   * Whether content moderation is currently enabled
+   */
+  enabled: boolean
+  /**
+   * Current Detector
+   *
+   * Name of the current detector model
+   */
+  current_detector: string | null
+  /**
+   * Loading Detector
+   *
+   * Name of detector being loaded (if any)
+   */
+  loading_detector: string | null
+  config: ModerationConfig
+}
+
+/**
+ * ModerationToggleResponse
+ *
+ * Response for moderation toggle operation.
+ */
+export type ModerationToggleResponse = {
+  /**
+   * Enabled
+   */
+  enabled: boolean
+  /**
+   * Current Detector
+   */
+  current_detector: string | null
+}
+
+/**
  * SwitchModelResponse
  *
  * Response for model switch operation.
@@ -301,3 +370,52 @@ export type GetModelStatusResponses = {
 
 export type GetModelStatusResponse =
   GetModelStatusResponses[keyof GetModelStatusResponses]
+
+export type GetModerationStatusData = {
+  body?: never
+  path?: never
+  query?: never
+  url: '/api/v1/moderation/status'
+}
+
+export type GetModerationStatusResponses = {
+  /**
+   * Successful Response
+   */
+  200: ModerationStatus
+}
+
+export type GetModerationStatusResponse =
+  GetModerationStatusResponses[keyof GetModerationStatusResponses]
+
+export type ToggleModerationData = {
+  body?: never
+  path?: never
+  query?: {
+    /**
+     * Enabled
+     */
+    enabled?: boolean
+  }
+  url: '/api/v1/moderation/toggle'
+}
+
+export type ToggleModerationErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type ToggleModerationError =
+  ToggleModerationErrors[keyof ToggleModerationErrors]
+
+export type ToggleModerationResponses = {
+  /**
+   * Successful Response
+   */
+  200: ModerationToggleResponse
+}
+
+export type ToggleModerationResponse =
+  ToggleModerationResponses[keyof ToggleModerationResponses]

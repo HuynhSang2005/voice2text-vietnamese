@@ -13,10 +13,12 @@ import {
   getHistory,
   getModels,
   getModelStatus,
+  getModerationStatus,
   healthCheck,
   type Options,
   root,
   switchModel,
+  toggleModeration,
 } from '../sdk.gen'
 import type {
   GetHistoryData,
@@ -26,11 +28,16 @@ import type {
   GetModelsResponse,
   GetModelStatusData,
   GetModelStatusResponse,
+  GetModerationStatusData,
+  GetModerationStatusResponse,
   HealthCheckData,
   RootData,
   SwitchModelData,
   SwitchModelError,
   SwitchModelResponse2,
+  ToggleModerationData,
+  ToggleModerationError,
+  ToggleModerationResponse,
 } from '../types.gen'
 
 export type QueryKey<TOptions extends Options> = [
@@ -333,3 +340,65 @@ export const getModelStatusOptions = (options?: Options<GetModelStatusData>) =>
     },
     queryKey: getModelStatusQueryKey(options),
   })
+
+export const getModerationStatusQueryKey = (
+  options?: Options<GetModerationStatusData>,
+) => createQueryKey('getModerationStatus', options)
+
+/**
+ * Get content moderation status
+ *
+ * Get the current status of content moderation.
+ */
+export const getModerationStatusOptions = (
+  options?: Options<GetModerationStatusData>,
+) =>
+  queryOptions<
+    GetModerationStatusResponse,
+    DefaultError,
+    GetModerationStatusResponse,
+    ReturnType<typeof getModerationStatusQueryKey>
+  >({
+    queryFn: async ({ queryKey, signal }) => {
+      const { data } = await getModerationStatus({
+        ...options,
+        ...queryKey[0],
+        signal,
+        throwOnError: true,
+      })
+      return data
+    },
+    queryKey: getModerationStatusQueryKey(options),
+  })
+
+/**
+ * Toggle content moderation
+ *
+ * Enable or disable content moderation.
+ *
+ * - When enabled: Starts the detector if not running, enables moderation
+ * - When disabled: Keeps detector running but stops sending moderation results
+ */
+export const toggleModerationMutation = (
+  options?: Partial<Options<ToggleModerationData>>,
+): UseMutationOptions<
+  ToggleModerationResponse,
+  ToggleModerationError,
+  Options<ToggleModerationData>
+> => {
+  const mutationOptions: UseMutationOptions<
+    ToggleModerationResponse,
+    ToggleModerationError,
+    Options<ToggleModerationData>
+  > = {
+    mutationFn: async (fnOptions) => {
+      const { data } = await toggleModeration({
+        ...options,
+        ...fnOptions,
+        throwOnError: true,
+      })
+      return data
+    },
+  }
+  return mutationOptions
+}

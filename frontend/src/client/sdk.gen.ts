@@ -10,6 +10,8 @@ import type {
   GetModelsResponses,
   GetModelStatusData,
   GetModelStatusResponses,
+  GetModerationStatusData,
+  GetModerationStatusResponses,
   HealthCheckData,
   HealthCheckResponses,
   RootData,
@@ -17,6 +19,9 @@ import type {
   SwitchModelData,
   SwitchModelErrors,
   SwitchModelResponses,
+  ToggleModerationData,
+  ToggleModerationErrors,
+  ToggleModerationResponses,
 } from './types.gen'
 import {
   zGetHistoryData,
@@ -25,10 +30,14 @@ import {
   zGetModelsResponse,
   zGetModelStatusData,
   zGetModelStatusResponse,
+  zGetModerationStatusData,
+  zGetModerationStatusResponse,
   zHealthCheckData,
   zRootData,
   zSwitchModelData,
   zSwitchModelResponse2,
+  zToggleModerationData,
+  zToggleModerationResponse,
 } from './zod.gen'
 
 export type Options<
@@ -159,5 +168,50 @@ export const getModelStatus = <ThrowOnError extends boolean = false>(
     responseValidator: async (data) =>
       await zGetModelStatusResponse.parseAsync(data),
     url: '/api/v1/models/status',
+    ...options,
+  })
+
+/**
+ * Get content moderation status
+ *
+ * Get the current status of content moderation.
+ */
+export const getModerationStatus = <ThrowOnError extends boolean = false>(
+  options?: Options<GetModerationStatusData, ThrowOnError>,
+) =>
+  (options?.client ?? client).get<
+    GetModerationStatusResponses,
+    unknown,
+    ThrowOnError
+  >({
+    requestValidator: async (data) =>
+      await zGetModerationStatusData.parseAsync(data),
+    responseValidator: async (data) =>
+      await zGetModerationStatusResponse.parseAsync(data),
+    url: '/api/v1/moderation/status',
+    ...options,
+  })
+
+/**
+ * Toggle content moderation
+ *
+ * Enable or disable content moderation.
+ *
+ * - When enabled: Starts the detector if not running, enables moderation
+ * - When disabled: Keeps detector running but stops sending moderation results
+ */
+export const toggleModeration = <ThrowOnError extends boolean = false>(
+  options?: Options<ToggleModerationData, ThrowOnError>,
+) =>
+  (options?.client ?? client).post<
+    ToggleModerationResponses,
+    ToggleModerationErrors,
+    ThrowOnError
+  >({
+    requestValidator: async (data) =>
+      await zToggleModerationData.parseAsync(data),
+    responseValidator: async (data) =>
+      await zToggleModerationResponse.parseAsync(data),
+    url: '/api/v1/moderation/toggle',
     ...options,
   })
