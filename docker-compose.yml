@@ -56,7 +56,9 @@ services:
       # Content Moderation (ViSoBERT-HSD)
       - ENABLE_CONTENT_MODERATION=true
       - MODERATION_CONFIDENCE_THRESHOLD=0.7
-      - MODERATION_ON_FINAL_ONLY=true
+      # Set to false for real-time streaming moderation (check every update)
+      # Set to true to only check final transcription (after flush/silence)
+      - MODERATION_ON_FINAL_ONLY=false
       
       # Database
       - DATABASE_URL=sqlite+aiosqlite:///data/database.db

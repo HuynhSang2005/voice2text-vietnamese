@@ -561,14 +561,32 @@ export function useTranscription(options: UseTranscriptionOptions) {
     }
 
     try {
-      // Send any queued chunks first
-      processQueue()
+      // Process any queued chunks first (inline to avoid callback timing issues)
+      if (!isProcessingQueueRef.current && audioQueueRef.current.length > 0) {
+        isProcessingQueueRef.current = true
+        while (audioQueueRef.current.length > 0) {
+          const chunk = audioQueueRef.current.shift()!
+          try {
+            (ws as WebSocket).send(chunk)
+            bytesSentRef.current += chunk.byteLength
+          } catch (queueError) {
+            console.error('[WS] Failed to send queued chunk:', queueError)
+            audioQueueRef.current.unshift(chunk)
+            break
+          }
+        }
+        isProcessingQueueRef.current = false
+      }
       
       // Send current chunk
       (ws as WebSocket).send(audioBuffer)
       bytesSentRef.current += audioBuffer.byteLength
       
-      setState((prev) => ({ ...prev, bytesSent: bytesSentRef.current }))
+      setState((prev) => ({ 
+        ...prev, 
+        bytesSent: bytesSentRef.current,
+        queuedChunks: audioQueueRef.current.length,
+      }))
       return true
     } catch (error) {
       console.error('[WS] Failed to send audio:', error)
@@ -583,7 +601,7 @@ export function useTranscription(options: UseTranscriptionOptions) {
       }
       return false
     }
-  }, [readyState, getWebSocket, enableQueue, maxQueueSize, processQueue])
+  }, [readyState, getWebSocket, enableQueue, maxQueueSize])
 
   /**
    * Clear current transcription state

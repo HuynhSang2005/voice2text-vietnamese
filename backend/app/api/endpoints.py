@@ -251,23 +251,33 @@ async def websocket_endpoint(websocket: WebSocket):
                                 logger.warning(f"Failed to send result (client disconnected): {send_err}")
                                 ws_closed.set()  # Mark WebSocket as closed on send error
                             
-                            # Content moderation: send text to detector if is_final and moderation enabled
+                            # Content moderation: send text to detector
+                            # Check manager.moderation_enabled for real-time toggle support
                             is_final = result.get("is_final", False)
                             text_content = result.get("text", "").strip()
                             
-                            if (is_final and text_content and moderation_enabled 
+                            # Determine if we should run moderation on this result
+                            # - If MODERATION_ON_FINAL_ONLY is True, only run on final results
+                            # - Otherwise, run on all results (streaming moderation)
+                            should_moderate = (
+                                text_content 
+                                and manager.moderation_enabled  # Check global state for toggle support
                                 and detector_input_q is not None
-                                and (not settings.MODERATION_ON_FINAL_ONLY or is_final)):
+                                and (not settings.MODERATION_ON_FINAL_ONLY or is_final)
+                            )
+                            
+                            if should_moderate:
                                 # Send text to detector with unique request_id
                                 request_id = str(uuid.uuid4())[:8]
                                 detector_request = {
                                     "request_id": request_id,
                                     "text": text_content,
-                                    "session_id": session_id
+                                    "session_id": session_id,
+                                    "is_final": is_final
                                 }
                                 try:
                                     await asyncio.to_thread(detector_input_q.put_nowait, detector_request)
-                                    logger.debug(f"Sent text to detector: '{text_content[:30]}...'")
+                                    logger.info(f"Sent to detector (final={is_final}): '{text_content[:40]}...'")
                                 except Exception as e:
                                     logger.warning(f"Failed to send to detector: {e}")
                             
@@ -301,8 +311,9 @@ async def websocket_endpoint(websocket: WebSocket):
 
         async def send_moderation_results():
             """Send content moderation results from detector to client."""
-            nonlocal detector_output_q, moderation_enabled
-            if not moderation_enabled or detector_output_q is None:
+            nonlocal detector_output_q
+            # Check initial state - but will also check manager state in loop
+            if detector_output_q is None:
                 return
                 
             try:
@@ -310,6 +321,13 @@ async def websocket_endpoint(websocket: WebSocket):
                     # Wait until receive is done or ws is closed
                     if receive_ended.is_set() and ws_closed.is_set():
                         break
+                    
+                    # Skip processing if moderation is disabled (but keep loop running for toggle)
+                    if not manager.moderation_enabled:
+                        await asyncio.sleep(0.1)
+                        if receive_ended.is_set():
+                            break
+                        continue
                         
                     try:
                         is_empty = await asyncio.to_thread(lambda: detector_output_q.empty())
@@ -333,7 +351,10 @@ async def websocket_endpoint(websocket: WebSocket):
                             
                             try:
                                 await websocket.send_json(client_result)
-                                logger.info(f"Sent moderation result: {client_result['label']} ({client_result['confidence']:.2%})")
+                                label = client_result['label']
+                                conf = client_result['confidence']
+                                flagged = "⚠️ FLAGGED" if client_result['is_flagged'] else ""
+                                logger.info(f"Sent moderation: {label} ({conf:.1%}) {flagged}")
                             except Exception as send_err:
                                 logger.warning(f"Failed to send moderation result: {send_err}")
                                 ws_closed.set()
@@ -359,7 +380,8 @@ async def websocket_endpoint(websocket: WebSocket):
         # Run tasks concurrently
         receive_task = asyncio.create_task(receive_audio())
         send_task = asyncio.create_task(send_results())
-        moderation_task = asyncio.create_task(send_moderation_results()) if moderation_enabled else None
+        # Always create moderation task if detector queues exist (for toggle support)
+        moderation_task = asyncio.create_task(send_moderation_results()) if detector_output_q else None
         
         # Wait for receive to finish first (client disconnect or error)
         await receive_task
@@ -377,7 +399,7 @@ async def websocket_endpoint(websocket: WebSocket):
             except asyncio.CancelledError:
                 pass
         
-        # Wait for moderation task if enabled
+        # Wait for moderation task if it was created
         if moderation_task:
             try:
                 await asyncio.wait_for(moderation_task, timeout=5.0)
@@ -496,7 +518,9 @@ async def get_model_status():
 async def get_moderation_status():
     """Get the current status of content moderation."""
     return ModerationStatus(
-        enabled=manager.moderation_enabled,
+        # Use moderation_requested for UI toggle state (user's intent)
+        # moderation_enabled would only be true if detector is also loaded
+        enabled=manager.moderation_requested,
         current_detector=manager.current_detector,
         loading_detector=manager.loading_detector,
         config=ModerationConfig(
@@ -529,6 +553,7 @@ async def toggle_moderation(enabled: bool = True):
         manager.set_moderation_enabled(False)
     
     return ModerationToggleResponse(
-        enabled=manager.moderation_enabled,
+        # Use moderation_requested for UI state
+        enabled=manager.moderation_requested,
         current_detector=manager.current_detector
     )

@@ -34,7 +34,9 @@ class ModelManager:
         self.detector_input_queues: Dict[str, multiprocessing.Queue] = {}
         self.detector_output_queues: Dict[str, multiprocessing.Queue] = {}
         self.current_detector: Optional[str] = None
-        self._moderation_enabled: bool = False
+        # Initialize from settings - actual moderation only works when detector is loaded
+        from app.core.config import settings
+        self._moderation_enabled: bool = settings.ENABLE_CONTENT_MODERATION
         
         # Track loading state
         self._loading_model: Optional[str] = None
@@ -63,6 +65,11 @@ class ModelManager:
     def moderation_enabled(self) -> bool:
         """Check if content moderation is currently enabled and running."""
         return self._moderation_enabled and self.current_detector is not None
+
+    @property
+    def moderation_requested(self) -> bool:
+        """Check if moderation is requested by user (regardless of detector state)."""
+        return self._moderation_enabled
 
     def get_status(self) -> str:
         """Get the current status of the model manager."""

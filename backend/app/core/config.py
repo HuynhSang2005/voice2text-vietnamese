@@ -60,6 +60,10 @@ def setup_logging():
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("httpcore").setLevel(logging.WARNING)
     logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
+    # Reduce WebSocket binary data spam (shows < BINARY ... in DEBUG mode)
+    logging.getLogger("websockets").setLevel(logging.WARNING)
+    logging.getLogger("websockets.protocol").setLevel(logging.WARNING)
+    logging.getLogger("websockets.server").setLevel(logging.WARNING)
     
 
 setup_logging()
