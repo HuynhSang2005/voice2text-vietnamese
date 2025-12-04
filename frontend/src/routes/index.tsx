@@ -4,7 +4,7 @@ import { AudioOutlined, LoadingOutlined, CheckCircleOutlined, DisconnectOutlined
 import { useRecording, useAudioDevices, useModels, useSwitchModel, useModelStatus } from '@/hooks'
 import { useAppStore, type ModelId } from '@/stores/app.store'
 import { ReadyState } from 'react-use-websocket'
-import { RecordButton, AudioWaveform, TranscriptDisplay, TranscriptActions, DeviceSelector } from '@/components/recording'
+import { RecordButton, AudioWaveform, TranscriptDisplay, TranscriptActions, DeviceSelector, ModerationToggle } from '@/components/recording'
 import { GenericError } from '@/components/common'
 import { useEffect, useState } from 'react'
 
@@ -81,6 +81,7 @@ function HomePage() {
     audioError,
     wsError,
     mediaStream,
+    latestModeration,
     startRecording,
     stopRecording,
     clearTranscript,
@@ -174,6 +175,7 @@ function HomePage() {
           expectedLatencyMs={getExpectedLatency(selectedModel)}
           minHeight={280}
           maxHeight={450}
+          moderationResult={latestModeration}
         />
         
         {/* Transcript Actions */}
@@ -270,6 +272,9 @@ function HomePage() {
               size="middle"
               showRefresh
             />
+
+            {/* Content Moderation Toggle */}
+            <ModerationToggle disabled={isRecording} />
           </Flex>
 
           {/* Record Button */}

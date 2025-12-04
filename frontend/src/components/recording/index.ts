@@ -12,3 +12,10 @@ export type { TranscriptActionsProps } from './TranscriptActions'
 
 export { DeviceSelector } from './DeviceSelector'
 export type { DeviceSelectorProps } from './DeviceSelector'
+
+// Content Moderation Components
+export { ModerationBadge } from './ModerationBadge'
+export type { ModerationBadgeProps, ModerationLabel } from './ModerationBadge'
+
+export { ModerationToggle } from './ModerationToggle'
+export type { ModerationToggleProps } from './ModerationToggle'

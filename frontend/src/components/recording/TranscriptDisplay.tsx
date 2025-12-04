@@ -2,6 +2,7 @@ import { useRef, useEffect } from 'react'
 import { Typography, Card, Empty, Spin, theme } from 'antd'
 import { AudioOutlined, LoadingOutlined, CloudSyncOutlined, ThunderboltOutlined } from '@ant-design/icons'
 import { cn } from '@/lib/utils'
+import { ModerationBadge, type ModerationLabel } from './ModerationBadge'
 
 const { Text, Paragraph } = Typography
 
@@ -56,6 +57,14 @@ export interface TranscriptDisplayProps {
    * Additional CSS class name
    */
   className?: string
+  /**
+   * Latest moderation result from ViSoBERT-HSD
+   */
+  moderationResult?: {
+    label: ModerationLabel
+    confidence: number
+    is_flagged: boolean
+  } | null
 }
 
 /**
@@ -87,6 +96,7 @@ export function TranscriptDisplay({
   maxHeight = 400,
   placeholder = 'Nhấn nút ghi âm để bắt đầu chuyển đổi giọng nói...',
   className,
+  moderationResult,
 }: TranscriptDisplayProps) {
   const { token } = theme.useToken()
   const contentRef = useRef<HTMLDivElement>(null)
@@ -134,6 +144,13 @@ export function TranscriptDisplay({
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <AudioOutlined style={{ color: token.colorPrimary }} />
           <Text strong>Nội dung chuyển đổi</Text>
+          {/* Moderation badge - show when result is available */}
+          {moderationResult && (
+            <ModerationBadge 
+              label={moderationResult.label} 
+              confidence={moderationResult.confidence} 
+            />
+          )}
           {/* Workflow type indicator */}
           {isRecording && (
             <span

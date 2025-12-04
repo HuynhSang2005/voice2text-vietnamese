@@ -44,6 +44,10 @@ interface AppState {
   // Sidebar collapsed state
   sidebarCollapsed: boolean
   setSidebarCollapsed: (collapsed: boolean) => void
+
+  // Content moderation state
+  moderationEnabled: boolean
+  setModerationEnabled: (enabled: boolean) => void
 }
 
 export const useAppStore = create<AppState>()(
@@ -85,6 +89,9 @@ export const useAppStore = create<AppState>()(
 
         sidebarCollapsed: false,
         setSidebarCollapsed: (sidebarCollapsed) => set({ sidebarCollapsed }),
+
+        moderationEnabled: false,
+        setModerationEnabled: (moderationEnabled) => set({ moderationEnabled }),
       }),
       {
         name: 'voice2text-storage',
@@ -92,6 +99,7 @@ export const useAppStore = create<AppState>()(
           selectedModel: state.selectedModel,
           sidebarCollapsed: state.sidebarCollapsed,
           selectedDeviceId: state.selectedDeviceId,
+          moderationEnabled: state.moderationEnabled,
         }),
       }
     )

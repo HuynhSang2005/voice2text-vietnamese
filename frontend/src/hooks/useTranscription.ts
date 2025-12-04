@@ -36,6 +36,19 @@ export interface TranscriptionResponse {
   type?: 'pong' | 'transcription' // Added type for pong response
 }
 
+// WebSocket moderation result (from ViSoBERT-HSD)
+export type ModerationLabel = 'CLEAN' | 'OFFENSIVE' | 'HATE'
+
+export interface ModerationResult {
+  type: 'moderation'
+  request_id: string | null
+  label: ModerationLabel
+  label_id: 0 | 1 | 2  // 0=CLEAN, 1=OFFENSIVE, 2=HATE
+  confidence: number   // 0.0 - 1.0
+  is_flagged: boolean  // true if OFFENSIVE or HATE
+  latency_ms: number
+}
+
 export interface TranscriptionState {
   /** Current interim text (not finalized) */
   interimText: string
@@ -57,6 +70,10 @@ export interface TranscriptionState {
   lastPingLatency: number | null
   /** Connection health status */
   connectionHealth: 'healthy' | 'degraded' | 'unhealthy'
+  /** Latest moderation result (from ViSoBERT-HSD) */
+  latestModeration: ModerationResult | null
+  /** All moderation results for current session */
+  moderationResults: ModerationResult[]
 }
 
 export interface UseTranscriptionOptions {
@@ -64,6 +81,8 @@ export interface UseTranscriptionOptions {
   model: ModelId
   /** Called when new transcription is received */
   onTranscription?: (response: TranscriptionResponse) => void
+  /** Called when moderation result is received */
+  onModeration?: (result: ModerationResult) => void
   /** Called when connection state changes */
   onConnectionChange?: (state: ReadyState) => void
   /** Called on error */
@@ -111,6 +130,7 @@ export function useTranscription(options: UseTranscriptionOptions) {
   const {
     model,
     onTranscription,
+    onModeration,
     onConnectionChange,
     onError,
     onHealthChange,
@@ -132,6 +152,8 @@ export function useTranscription(options: UseTranscriptionOptions) {
     queuedChunks: 0,
     lastPingLatency: null,
     connectionHealth: 'healthy',
+    latestModeration: null,
+    moderationResults: [],
   })
 
   // Track if config has been sent
@@ -210,6 +232,8 @@ export function useTranscription(options: UseTranscriptionOptions) {
           queuedChunks: 0,
           lastPingLatency: null,
           connectionHealth: 'healthy',
+          latestModeration: null,
+          moderationResults: [],
         }))
       },
       onClose: () => {
@@ -392,13 +416,29 @@ export function useTranscription(options: UseTranscriptionOptions) {
     if (lastMessage === null) return
 
     try {
-      const response: TranscriptionResponse = JSON.parse(lastMessage.data)
+      const data = JSON.parse(lastMessage.data)
       
       // Handle pong response
-      if (response.type === 'pong' && 'timestamp' in response) {
-        handlePong((response as unknown as { timestamp: number }).timestamp)
+      if (data.type === 'pong' && 'timestamp' in data) {
+        handlePong(data.timestamp)
         return
       }
+      
+      // Handle moderation result
+      if (data.type === 'moderation') {
+        const moderationResult: ModerationResult = data as ModerationResult
+        setState((prev) => ({
+          ...prev,
+          latestModeration: moderationResult,
+          moderationResults: [...prev.moderationResults, moderationResult],
+        }))
+        onModeration?.(moderationResult)
+        console.log('[WS] Moderation result:', moderationResult.label, `(${(moderationResult.confidence * 100).toFixed(1)}%)`)
+        return
+      }
+      
+      // Handle transcription response
+      const response: TranscriptionResponse = data
       
       setState((prev) => {
         let newInterim = prev.interimText
@@ -432,7 +472,7 @@ export function useTranscription(options: UseTranscriptionOptions) {
     } catch (error) {
       console.error('[WS] Failed to parse message:', error)
     }
-  }, [lastMessage, onTranscription, handlePong])
+  }, [lastMessage, onTranscription, onModeration, handlePong])
 
   // Cleanup heartbeat on unmount
   useEffect(() => {
@@ -554,6 +594,8 @@ export function useTranscription(options: UseTranscriptionOptions) {
       interimText: '',
       finalizedSegments: [],
       fullTranscript: '',
+      latestModeration: null,
+      moderationResults: [],
     }))
   }, [])
 

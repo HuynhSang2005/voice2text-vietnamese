@@ -299,6 +299,10 @@ export function useRecording(options: UseRecordingOptions = {}) {
     fullTranscript: transcription.fullTranscript,
     finalizedSegments: transcription.finalizedSegments,
 
+    // Moderation data (from ViSoBERT-HSD)
+    latestModeration: transcription.latestModeration,
+    moderationResults: transcription.moderationResults,
+
     // Session info
     sessionId,
     selectedModel,
