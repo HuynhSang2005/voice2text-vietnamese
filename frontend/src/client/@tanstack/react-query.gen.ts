@@ -137,7 +137,12 @@ export const getModelsQueryKey = (options?: Options<GetModelsData>) =>
 /**
  * List available models
  *
- * List available speech-to-text models with their capabilities.
+ * List available speech-to-text models.
+ *
+ * Currently only Zipformer is available - a real-time streaming model
+ * optimized for Vietnamese speech recognition (trained on 6000h of data).
+ *
+ * Note: Model switching is not supported as there is only one model.
  */
 export const getModelsOptions = (options?: Options<GetModelsData>) =>
   queryOptions<
@@ -284,11 +289,16 @@ export const getHistoryInfiniteOptions = (options?: Options<GetHistoryData>) =>
   )
 
 /**
- * Switch active model
+ * Switch active model (deprecated)
  *
- * Manually switch the active model.
+ * Switch active model (DEPRECATED).
  *
- * Available models: zipformer
+ * This endpoint is deprecated as only Zipformer model is available.
+ * The model is automatically loaded when needed.
+ *
+ * For backward compatibility, this endpoint still works but only accepts "zipformer".
+ *
+ * @deprecated
  */
 export const switchModelMutation = (
   options?: Partial<Options<SwitchModelData>>,

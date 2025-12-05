@@ -77,6 +77,7 @@ export const zSwitchModelResponse = z.object({
  * Database model for storing transcription history.
  *
  * Each record represents a transcription session (one recording session).
+ * Includes moderation data (label, detected keywords, etc.) when content moderation is enabled.
  */
 export const zTranscriptionLog = z.object({
   id: z.optional(z.union([z.int(), z.null()])),
@@ -85,6 +86,10 @@ export const zTranscriptionLog = z.object({
   content: z.string(),
   latency_ms: z.optional(z.number()).default(0),
   created_at: z.optional(z.string()),
+  moderation_label: z.optional(z.union([z.string(), z.null()])),
+  moderation_confidence: z.optional(z.union([z.number(), z.null()])),
+  is_flagged: z.optional(z.union([z.boolean(), z.null()])),
+  detected_keywords: z.optional(z.union([z.array(z.string()), z.null()])),
 })
 
 /**

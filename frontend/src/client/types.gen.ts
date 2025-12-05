@@ -153,6 +153,7 @@ export type SwitchModelResponse = {
  * Database model for storing transcription history.
  *
  * Each record represents a transcription session (one recording session).
+ * Includes moderation data (label, detected keywords, etc.) when content moderation is enabled.
  */
 export type TranscriptionLog = {
   /**
@@ -189,6 +190,30 @@ export type TranscriptionLog = {
    * Timestamp of creation
    */
   created_at?: string
+  /**
+   * Moderation Label
+   *
+   * Moderation label: CLEAN, OFFENSIVE, or HATE
+   */
+  moderation_label?: string | null
+  /**
+   * Moderation Confidence
+   *
+   * Confidence score of moderation (0.0 to 1.0)
+   */
+  moderation_confidence?: number | null
+  /**
+   * Is Flagged
+   *
+   * Whether the content was flagged by moderation
+   */
+  is_flagged?: boolean | null
+  /**
+   * Detected Keywords
+   *
+   * List of detected bad/offensive keywords in the text
+   */
+  detected_keywords?: Array<string> | null
 }
 
 /**
@@ -336,10 +361,6 @@ export type SwitchModelErrors = {
    * Validation Error
    */
   422: HttpValidationError
-  /**
-   * Model failed to start
-   */
-  503: unknown
 }
 
 export type SwitchModelError = SwitchModelErrors[keyof SwitchModelErrors]
