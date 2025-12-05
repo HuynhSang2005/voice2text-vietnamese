@@ -403,6 +403,17 @@ async def websocket_endpoint(websocket: WebSocket):
                                     # Send moderation result without keywords
                                     try:
                                         await websocket.send_json(client_result)
+                                        # Save moderation to DB
+                                        if session_id:
+                                            await _save_transcription(
+                                                session_id=session_id,
+                                                model_id=model_name,
+                                                content="",  # Content already saved by send_results
+                                                moderation_label=client_result['label'],
+                                                moderation_confidence=client_result['confidence'],
+                                                is_flagged=is_flagged,
+                                                detected_keywords=[]
+                                            )
                                     except Exception:
                                         ws_closed.set()
                             else:
@@ -413,6 +424,18 @@ async def websocket_endpoint(websocket: WebSocket):
                                     conf = client_result['confidence']
                                     flagged = "⚠️ FLAGGED" if is_flagged else ""
                                     logger.info(f"Sent moderation: {label} ({conf:.1%}) {flagged}")
+                                    
+                                    # Save moderation to DB
+                                    if session_id:
+                                        await _save_transcription(
+                                            session_id=session_id,
+                                            model_id=model_name,
+                                            content="",  # Content already saved by send_results
+                                            moderation_label=label,
+                                            moderation_confidence=conf,
+                                            is_flagged=is_flagged,
+                                            detected_keywords=[]
+                                        )
                                 except Exception as send_err:
                                     logger.warning(f"Failed to send moderation result: {send_err}")
                                     ws_closed.set()
@@ -483,6 +506,18 @@ async def websocket_endpoint(websocket: WebSocket):
                                     if len(detected_keywords) > 3:
                                         keywords_str += f"... (+{len(detected_keywords)-3})"
                                     logger.info(f"Sent moderation with keywords: {label} ({conf:.1%}) ⚠️ FLAGGED [{keywords_str}]")
+                                    
+                                    # Save moderation with keywords to DB
+                                    if session_id:
+                                        await _save_transcription(
+                                            session_id=session_id,
+                                            model_id=model_name,
+                                            content="",  # Content already saved by send_results
+                                            moderation_label=label,
+                                            moderation_confidence=conf,
+                                            is_flagged=True,
+                                            detected_keywords=detected_keywords
+                                        )
                                 except Exception as send_err:
                                     logger.warning(f"Failed to send moderation with keywords: {send_err}")
                                     ws_closed.set()
@@ -578,11 +613,27 @@ async def _save_transcription(
     model_id: str, 
     content: str, 
     latency_ms: float = 0.0,
-    workflow_type: str = "streaming"
+    workflow_type: str = "streaming",
+    # Moderation data (optional)
+    moderation_label: str = None,
+    moderation_confidence: float = None,
+    is_flagged: bool = None,
+    detected_keywords: list = None
 ):
     """Save transcription to database with fresh session.
     
     For streaming workflow (Zipformer): REPLACE content (each result contains full transcription)
+    
+    Args:
+        session_id: Unique session identifier
+        model_id: Model used for transcription
+        content: Transcribed text content
+        latency_ms: Processing latency in milliseconds
+        workflow_type: "streaming" (replace) or "buffered" (append)
+        moderation_label: CLEAN, OFFENSIVE, or HATE (optional)
+        moderation_confidence: Confidence score 0.0-1.0 (optional)
+        is_flagged: Whether content was flagged (optional)
+        detected_keywords: List of detected bad keywords (optional)
     """
     from sqlalchemy.orm import sessionmaker
     
@@ -612,6 +663,20 @@ async def _save_transcription(
                 # Keep max latency for the session
                 if latency_ms > existing_log.latency_ms:
                     existing_log.latency_ms = latency_ms
+                
+                # Update moderation data (only if provided)
+                if moderation_label is not None:
+                    existing_log.moderation_label = moderation_label
+                if moderation_confidence is not None:
+                    existing_log.moderation_confidence = moderation_confidence
+                if is_flagged is not None:
+                    existing_log.is_flagged = is_flagged
+                if detected_keywords is not None:
+                    # Merge keywords (avoid duplicates)
+                    existing_keywords = existing_log.detected_keywords or []
+                    merged_keywords = list(dict.fromkeys(existing_keywords + detected_keywords))
+                    existing_log.detected_keywords = merged_keywords
+                    
                 session.add(existing_log)
             else:
                 db_log = TranscriptionLog(
@@ -619,6 +684,10 @@ async def _save_transcription(
                     model_id=model_id,
                     content=content,
                     latency_ms=latency_ms,
+                    moderation_label=moderation_label,
+                    moderation_confidence=moderation_confidence,
+                    is_flagged=is_flagged,
+                    detected_keywords=detected_keywords,
                 )
                 session.add(db_log)
                 logger.debug(f"Created new transcription for session {session_id}")

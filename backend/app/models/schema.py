@@ -1,6 +1,6 @@
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime, timezone
-from sqlmodel import SQLModel, Field
+from sqlmodel import SQLModel, Field, Column, JSON
 from pydantic import field_serializer
 
 
@@ -9,6 +9,7 @@ class TranscriptionLog(SQLModel, table=True):
     Database model for storing transcription history.
     
     Each record represents a transcription session (one recording session).
+    Includes moderation data (label, detected keywords, etc.) when content moderation is enabled.
     """
     __tablename__ = "transcription_logs"
     
@@ -21,6 +22,27 @@ class TranscriptionLog(SQLModel, table=True):
         default_factory=lambda: datetime.now(timezone.utc),
         index=True,
         description="Timestamp of creation"
+    )
+    
+    # Content Moderation fields
+    moderation_label: Optional[str] = Field(
+        default=None, 
+        index=True,
+        description="Moderation label: CLEAN, OFFENSIVE, or HATE"
+    )
+    moderation_confidence: Optional[float] = Field(
+        default=None,
+        description="Confidence score of moderation (0.0 to 1.0)"
+    )
+    is_flagged: Optional[bool] = Field(
+        default=None,
+        index=True,
+        description="Whether the content was flagged by moderation"
+    )
+    detected_keywords: Optional[List[str]] = Field(
+        default=None,
+        sa_column=Column(JSON),
+        description="List of detected bad/offensive keywords in the text"
     )
 
     @field_serializer('created_at')
