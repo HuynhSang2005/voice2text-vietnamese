@@ -3,6 +3,7 @@ import { Typography, Card, Empty, Spin, theme } from 'antd'
 import { AudioOutlined, LoadingOutlined, CloudSyncOutlined, ThunderboltOutlined } from '@ant-design/icons'
 import { cn } from '@/lib/utils'
 import { ModerationBadge, type ModerationLabel } from './ModerationBadge'
+import { KeywordHighlight } from './KeywordHighlight'
 
 const { Text, Paragraph } = Typography
 
@@ -64,7 +65,14 @@ export interface TranscriptDisplayProps {
     label: ModerationLabel
     confidence: number
     is_flagged: boolean
+    detected_keywords?: string[]
   } | null
+  /**
+   * Whether to highlight detected keywords in transcript
+   * Only applies when moderationResult has detected_keywords
+   * @default true
+   */
+  showKeywordHighlight?: boolean
 }
 
 /**
@@ -97,6 +105,7 @@ export function TranscriptDisplay({
   placeholder = 'Nhấn nút ghi âm để bắt đầu chuyển đổi giọng nói...',
   className,
   moderationResult,
+  showKeywordHighlight = true,
 }: TranscriptDisplayProps) {
   const { token } = theme.useToken()
   const contentRef = useRef<HTMLDivElement>(null)
@@ -148,7 +157,8 @@ export function TranscriptDisplay({
           {moderationResult && (
             <ModerationBadge 
               label={moderationResult.label} 
-              confidence={moderationResult.confidence} 
+              confidence={moderationResult.confidence}
+              detectedKeywords={moderationResult.detected_keywords}
             />
           )}
           {/* Workflow type indicator */}
@@ -247,7 +257,17 @@ export function TranscriptDisplay({
                   wordBreak: 'break-word',
                 }}
               >
-                {transcript}
+                {showKeywordHighlight && 
+                 moderationResult?.detected_keywords && 
+                 moderationResult.detected_keywords.length > 0 ? (
+                  <KeywordHighlight
+                    text={transcript}
+                    keywords={moderationResult.detected_keywords}
+                    showTooltip={true}
+                  />
+                ) : (
+                  transcript
+                )}
               </Paragraph>
             )}
             

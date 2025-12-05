@@ -19,3 +19,6 @@ export type { ModerationBadgeProps, ModerationLabel } from './ModerationBadge'
 
 export { ModerationToggle } from './ModerationToggle'
 export type { ModerationToggleProps } from './ModerationToggle'
+
+export { KeywordHighlight } from './KeywordHighlight'
+export type { KeywordHighlightProps } from './KeywordHighlight'

@@ -47,6 +47,7 @@ export interface ModerationResult {
   confidence: number   // 0.0 - 1.0
   is_flagged: boolean  // true if OFFENSIVE or HATE
   latency_ms: number
+  detected_keywords: string[]  // Keywords detected by ViSoBERT-HSD-Span
 }
 
 export interface TranscriptionState {
@@ -426,14 +427,20 @@ export function useTranscription(options: UseTranscriptionOptions) {
       
       // Handle moderation result
       if (data.type === 'moderation') {
-        const moderationResult: ModerationResult = data as ModerationResult
+        const moderationResult: ModerationResult = {
+          ...data,
+          detected_keywords: data.detected_keywords ?? [],  // Ensure array fallback
+        } as ModerationResult
         setState((prev) => ({
           ...prev,
           latestModeration: moderationResult,
           moderationResults: [...prev.moderationResults, moderationResult],
         }))
         onModeration?.(moderationResult)
-        console.log('[WS] Moderation result:', moderationResult.label, `(${(moderationResult.confidence * 100).toFixed(1)}%)`)
+        const keywordsInfo = moderationResult.detected_keywords.length > 0 
+          ? `, keywords: [${moderationResult.detected_keywords.join(', ')}]` 
+          : ''
+        console.log('[WS] Moderation result:', moderationResult.label, `(${(moderationResult.confidence * 100).toFixed(1)}%)${keywordsInfo}`)
         return
       }
       

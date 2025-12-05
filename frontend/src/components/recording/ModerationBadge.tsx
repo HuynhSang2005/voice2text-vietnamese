@@ -19,6 +19,8 @@ export interface ModerationBadgeProps {
   size?: 'small' | 'default'
   /** Show confidence percentage in badge */
   showConfidence?: boolean
+  /** Detected keywords from ViSoBERT-HSD-Span */
+  detectedKeywords?: string[]
 }
 
 /**
@@ -57,7 +59,7 @@ const labelConfig = {
  * ```tsx
  * <ModerationBadge label="CLEAN" confidence={0.95} />
  * <ModerationBadge label="OFFENSIVE" confidence={0.82} size="default" />
- * <ModerationBadge label="HATE" confidence={0.91} showConfidence />
+ * <ModerationBadge label="HATE" confidence={0.91} showConfidence detectedKeywords={['từ khóa']} />
  * ```
  */
 export function ModerationBadge({
@@ -65,10 +67,12 @@ export function ModerationBadge({
   confidence,
   size = 'small',
   showConfidence = false,
+  detectedKeywords = [],
 }: ModerationBadgeProps) {
   const { token } = theme.useToken()
   const config = labelConfig[label]
   const percentText = `${(confidence * 100).toFixed(1)}%`
+  const hasKeywords = detectedKeywords.length > 0
 
   const displayText = size === 'default' 
     ? config.text 
@@ -83,6 +87,26 @@ export function ModerationBadge({
           {config.text} ({config.textEn})
           <br />
           Độ tin cậy: {percentText}
+          {hasKeywords && (
+            <>
+              <br />
+              <br />
+              <strong>Từ khóa phát hiện:</strong>
+              <br />
+              {detectedKeywords.map((keyword, index) => (
+                <Tag 
+                  key={index} 
+                  color="warning" 
+                  style={{ 
+                    margin: '2px 4px 2px 0',
+                    fontSize: token.fontSizeSM,
+                  }}
+                >
+                  {keyword}
+                </Tag>
+              ))}
+            </>
+          )}
         </span>
       }
     >
@@ -96,6 +120,11 @@ export function ModerationBadge({
         }}
       >
         {displayText}
+        {hasKeywords && size === 'default' && (
+          <span style={{ marginLeft: 4, opacity: 0.8 }}>
+            ({detectedKeywords.length})
+          </span>
+        )}
       </Tag>
     </Tooltip>
   )
