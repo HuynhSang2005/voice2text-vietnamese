@@ -10,6 +10,8 @@ import dayjs from 'dayjs'
 import relativeTime from 'dayjs/plugin/relativeTime'
 import 'dayjs/locale/vi'
 import type { TranscriptionLog } from '@/client/types.gen'
+import { ModerationBadge, type ModerationLabel } from '../recording/ModerationBadge'
+import { KeywordHighlight } from '../recording/KeywordHighlight'
 
 // Setup dayjs
 dayjs.extend(relativeTime)
@@ -125,6 +127,15 @@ export function HistoryItem({ item, onClick }: HistoryItemProps) {
       <Flex justify="space-between" align="center" style={{ marginBottom: 8 }}>
         <Space size="small">
           <Tag color={modelColor}>{item.model_id}</Tag>
+          {/* Moderation badge - show when moderation result is available */}
+          {item.moderation_label && (
+            <ModerationBadge
+              label={item.moderation_label as ModerationLabel}
+              confidence={item.moderation_confidence ?? 0}
+              detectedKeywords={item.detected_keywords ?? []}
+              size="small"
+            />
+          )}
           {(item.latency_ms ?? 0) > 0 && (
             <Tooltip title="Độ trễ xử lý">
               <Tag icon={<ThunderboltOutlined />} color="cyan">
@@ -154,7 +165,7 @@ export function HistoryItem({ item, onClick }: HistoryItemProps) {
         </Space>
       </Flex>
 
-      {/* Content - expandable */}
+      {/* Content - expandable with keyword highlighting */}
       {item.content ? (
         <div>
           <div
@@ -169,7 +180,16 @@ export function HistoryItem({ item, onClick }: HistoryItemProps) {
               margin: 0,
             }}
           >
-            {item.content}
+            {/* Highlight keywords if flagged and has keywords */}
+            {item.is_flagged && item.detected_keywords && item.detected_keywords.length > 0 ? (
+              <KeywordHighlight
+                text={item.content}
+                keywords={item.detected_keywords}
+                showTooltip={true}
+              />
+            ) : (
+              item.content
+            )}
           </div>
           {/* Show toggle button only if content was truncated */}
           {isTruncated && (
