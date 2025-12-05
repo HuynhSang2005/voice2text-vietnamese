@@ -32,7 +32,7 @@ Usage:
 
 import os
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List
 
 from app.workers.base import BaseWorker
 from app.core.config import settings
@@ -138,14 +138,14 @@ class HateDetectorWorker(BaseWorker):
             })
     
     def _classify_text(self, text: str, request_id: Optional[str] = None) -> Dict:
-        """Classify text and return structured result.
+        """Classify text and return structured result with detected keywords.
         
         Args:
             text: Text to classify
             request_id: Optional request ID for tracking
             
         Returns:
-            Classification result dictionary
+            Classification result dictionary including detected bad keywords
         """
         import torch
         
@@ -167,12 +167,14 @@ class HateDetectorWorker(BaseWorker):
         predicted_label = logits.argmax(dim=-1).item()
         confidence = probabilities[0][predicted_label].item()
         
-        # Build result
+        # Build result - include text for span detector to use
         return {
             "request_id": request_id,
+            "text": text,  # Include original text for span detection
             "label": self.LABEL_MAP[predicted_label],
             "label_id": predicted_label,
             "confidence": round(confidence, 4),
             "is_flagged": predicted_label > 0,  # True for OFFENSIVE or HATE
-            "text_length": len(text)
+            "text_length": len(text),
+            "detected_keywords": []  # Will be populated by visobert-hsd-span
         }

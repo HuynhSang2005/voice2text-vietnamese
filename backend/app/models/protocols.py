@@ -1,4 +1,4 @@
-from typing import Optional, Literal
+from typing import Optional, Literal, List
 from pydantic import BaseModel, Field
 
 
@@ -52,6 +52,11 @@ class ModerationResult(BaseModel):
     confidence: float = Field(ge=0.0, le=1.0)
     is_flagged: bool
     latency_ms: float = Field(ge=0, description="Inference latency in milliseconds")
+    # New field: List of detected bad keywords in the text
+    detected_keywords: List[str] = Field(
+        default_factory=list, 
+        description="List of detected bad/offensive keywords found in the text"
+    )
 
 
 class ModerationConfig(BaseModel):
