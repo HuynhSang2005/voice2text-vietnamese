@@ -110,15 +110,10 @@ async def websocket_endpoint(websocket: WebSocket):
     # Fallback to None until client sends session ID
     session_id = None
     
-    # Content moderation state
+    # Content moderation state (unified - span detector handles both spans + label inference)
     moderation_enabled = settings.ENABLE_CONTENT_MODERATION
-    detector_input_q = None
-    detector_output_q = None
-    # Span detector for extracting toxic keywords
     span_detector_input_q = None
     span_detector_output_q = None
-    # Store pending span requests to match with moderation results
-    pending_span_requests: dict = {}
     
     try:
         # 1. Wait for config message (Optional, or first message)
@@ -144,29 +139,19 @@ async def websocket_endpoint(websocket: WebSocket):
             await websocket.close(code=status.WS_1011_INTERNAL_ERROR, reason="Failed to start model")
             return
 
-        # Start detector if moderation is enabled
+        # Start span detector if moderation is enabled (unified moderation)
+        # SpanDetector now handles both span extraction AND label inference
         if moderation_enabled:
             try:
-                manager.start_detector("visobert-hsd")
-                detector_input_q, detector_output_q = manager.get_detector_queues()
-                if detector_input_q and detector_output_q:
-                    logger.info("Content moderation enabled with visobert-hsd")
-                    
-                    # Also start span detector for extracting toxic keywords
-                    try:
-                        manager.start_span_detector("visobert-hsd-span")
-                        span_detector_input_q, span_detector_output_q = manager.get_span_detector_queues()
-                        if span_detector_input_q and span_detector_output_q:
-                            logger.info("Span detection enabled with visobert-hsd-span")
-                        else:
-                            logger.warning("Failed to get span detector queues, keywords won't be extracted")
-                    except Exception as e:
-                        logger.warning(f"Failed to start span detector: {e}, keywords won't be extracted")
+                manager.start_span_detector("visobert-hsd-span")
+                span_detector_input_q, span_detector_output_q = manager.get_span_detector_queues()
+                if span_detector_input_q and span_detector_output_q:
+                    logger.info("Content moderation enabled with visobert-hsd-span (unified)")
                 else:
-                    logger.warning("Failed to get detector queues, moderation disabled")
+                    logger.warning("Failed to get span detector queues, moderation disabled")
                     moderation_enabled = False
             except Exception as e:
-                logger.warning(f"Failed to start detector: {e}, moderation disabled")
+                logger.warning(f"Failed to start span detector: {e}, moderation disabled")
                 moderation_enabled = False
 
         # If first message was audio, put it in queue
@@ -227,19 +212,7 @@ async def websocket_endpoint(websocket: WebSocket):
                                     if drained_count > 0:
                                         logger.info(f"Drained {drained_count} stale transcription results from previous session")
                                     
-                                    # Also drain detector output queue if exists
-                                    if detector_output_q:
-                                        detector_drained = 0
-                                        while True:
-                                            try:
-                                                detector_output_q.get_nowait()
-                                                detector_drained += 1
-                                            except Exception:
-                                                break
-                                        if detector_drained > 0:
-                                            logger.info(f"Drained {detector_drained} stale moderation results")
-                                    
-                                    # Drain span detector output queue if exists
+                                    # Drain span detector output queue if exists (unified moderation)
                                     if span_detector_output_q:
                                         span_drained = 0
                                         while True:
@@ -249,12 +222,7 @@ async def websocket_endpoint(websocket: WebSocket):
                                             except Exception:
                                                 break
                                         if span_drained > 0:
-                                            logger.info(f"Drained {span_drained} stale span detection results")
-                                    
-                                    # Clear pending span requests from previous session
-                                    if pending_span_requests:
-                                        logger.info(f"Cleared {len(pending_span_requests)} pending span requests")
-                                        pending_span_requests.clear()
+                                            logger.info(f"Drained {span_drained} stale moderation results")
                                     
                                     # Reset worker state (stream + last_text)
                                     await asyncio.to_thread(input_q.put, {"reset": True})
@@ -295,7 +263,7 @@ async def websocket_endpoint(websocket: WebSocket):
         ws_closed = asyncio.Event()
         
         async def send_results():
-            nonlocal detector_input_q, moderation_enabled
+            nonlocal moderation_enabled
             try:
                 result_count = 0
                 # Keep running until receive ended AND queue is empty for a while
@@ -324,7 +292,7 @@ async def websocket_endpoint(websocket: WebSocket):
                                 logger.warning(f"Failed to send result (client disconnected): {send_err}")
                                 ws_closed.set()  # Mark WebSocket as closed on send error
                             
-                            # Content moderation: send text to detector
+                            # Content moderation: send text to span detector (unified moderation)
                             # Check manager.moderation_enabled for real-time toggle support
                             is_final = result.get("is_final", False)
                             text_content = result.get("text", "").strip()
@@ -335,24 +303,24 @@ async def websocket_endpoint(websocket: WebSocket):
                             should_moderate = (
                                 text_content 
                                 and manager.moderation_enabled  # Check global state for toggle support
-                                and detector_input_q is not None
+                                and span_detector_input_q is not None
                                 and (not settings.MODERATION_ON_FINAL_ONLY or is_final)
                             )
                             
                             if should_moderate:
-                                # Send text to detector with unique request_id
+                                # Send text to span detector with unique request_id
                                 request_id = str(uuid.uuid4())[:8]
-                                detector_request = {
+                                moderation_request = {
                                     "request_id": request_id,
                                     "text": text_content,
                                     "session_id": session_id,
                                     "is_final": is_final
                                 }
                                 try:
-                                    await asyncio.to_thread(detector_input_q.put_nowait, detector_request)
-                                    logger.info(f"Sent to detector (final={is_final}): '{text_content[:40]}...'")
+                                    await asyncio.to_thread(span_detector_input_q.put_nowait, moderation_request)
+                                    logger.info(f"Sent to moderation (final={is_final}): '{text_content[:40]}...'")
                                 except Exception as e:
-                                    logger.warning(f"Failed to send to detector: {e}")
+                                    logger.warning(f"Failed to send to moderation: {e}")
                             
                             # Save to DB only if we have a session ID from client
                             latency_ms = result.get("latency_ms", 0.0)
@@ -383,13 +351,15 @@ async def websocket_endpoint(websocket: WebSocket):
                 logger.error(f"Error sending results: {e}", exc_info=True)
 
         async def send_moderation_results():
-            """Send content moderation results from detector to client.
+            """Send unified moderation results from span detector to client.
             
-            If text is flagged, also triggers span detection for keyword extraction.
+            The SpanDetector now handles both:
+            - Span extraction (detecting toxic keywords)
+            - Label inference (CLEAN/OFFENSIVE/HATE from spans)
             """
-            nonlocal detector_output_q, span_detector_input_q, pending_span_requests
-            # Check initial state - but will also check manager state in loop
-            if detector_output_q is None:
+            nonlocal span_detector_output_q
+            
+            if span_detector_output_q is None:
                 return
                 
             try:
@@ -406,89 +376,61 @@ async def websocket_endpoint(websocket: WebSocket):
                         continue
                         
                     try:
-                        is_empty = await asyncio.to_thread(lambda: detector_output_q.empty())
+                        is_empty = await asyncio.to_thread(lambda: span_detector_output_q.empty())
                         if not is_empty:
-                            moderation_result = await asyncio.to_thread(detector_output_q.get_nowait)
+                            moderation_result = await asyncio.to_thread(span_detector_output_q.get_nowait)
                             
                             if ws_closed.is_set():
                                 logger.debug("WebSocket closed, discarding moderation result")
                                 continue
                             
+                            # SpanDetector output now includes label, label_id, confidence, is_flagged
                             request_id = moderation_result.get("request_id")
+                            label = moderation_result.get("label", "CLEAN")
+                            label_id = moderation_result.get("label_id", 0)
+                            confidence = moderation_result.get("confidence", 1.0)
                             is_flagged = moderation_result.get("is_flagged", False)
+                            detected_keywords = moderation_result.get("detected_keywords", [])
+                            spans = moderation_result.get("spans", [])
+                            latency_ms = moderation_result.get("latency_ms", 0)
                             
-                            # Format moderation result for client
+                            # Format unified moderation result for client
                             client_result = {
                                 "type": "moderation",
                                 "request_id": request_id,
-                                "label": moderation_result.get("label"),
-                                "label_id": moderation_result.get("label_id"),
-                                "confidence": moderation_result.get("confidence"),
+                                "label": label,
+                                "label_id": label_id,
+                                "confidence": confidence,
                                 "is_flagged": is_flagged,
-                                "latency_ms": moderation_result.get("latency_ms", 0),
-                                "detected_keywords": []  # Will be populated by span detector
+                                "latency_ms": latency_ms,
+                                "detected_keywords": detected_keywords,
+                                "spans": spans
                             }
                             
-                            # If flagged and span detector is available, request span detection
-                            if is_flagged and span_detector_input_q is not None:
-                                # Get the original text from the moderation request
-                                # We need to retrieve it - store text in pending_span_requests
-                                # Note: The text was sent in detector_request, we need to track it
-                                span_request = {
-                                    "request_id": request_id,
-                                    "text": moderation_result.get("text", ""),  # HateDetector should include text
-                                }
+                            try:
+                                await websocket.send_json(client_result)
+                                flagged_str = "⚠️ FLAGGED" if is_flagged else ""
+                                keywords_str = ""
+                                if detected_keywords:
+                                    keywords_str = f" [{', '.join(detected_keywords[:3])}]"
+                                    if len(detected_keywords) > 3:
+                                        keywords_str = f" [{', '.join(detected_keywords[:3])}... (+{len(detected_keywords)-3})]"
+                                logger.info(f"Sent moderation: {label} ({confidence:.1%}) {flagged_str}{keywords_str}")
                                 
-                                # Store pending span request to match results later
-                                pending_span_requests[request_id] = {
-                                    "moderation_result": client_result,
-                                    "timestamp": asyncio.get_event_loop().time()
-                                }
-                                
-                                try:
-                                    await asyncio.to_thread(span_detector_input_q.put_nowait, span_request)
-                                    logger.info(f"Sent to span detector for keyword extraction: {request_id}")
-                                except Exception as e:
-                                    logger.warning(f"Failed to send to span detector: {e}")
-                                    # Send moderation result without keywords
-                                    try:
-                                        await websocket.send_json(client_result)
-                                        # Save moderation to DB
-                                        if session_id:
-                                            await _save_transcription(
-                                                session_id=session_id,
-                                                model_id=model_name,
-                                                content="",  # Content already saved by send_results
-                                                moderation_label=client_result['label'],
-                                                moderation_confidence=client_result['confidence'],
-                                                is_flagged=is_flagged,
-                                                detected_keywords=[]
-                                            )
-                                    except Exception:
-                                        ws_closed.set()
-                            else:
-                                # Not flagged or no span detector - send result immediately
-                                try:
-                                    await websocket.send_json(client_result)
-                                    label = client_result['label']
-                                    conf = client_result['confidence']
-                                    flagged = "⚠️ FLAGGED" if is_flagged else ""
-                                    logger.info(f"Sent moderation: {label} ({conf:.1%}) {flagged}")
-                                    
-                                    # Save moderation to DB
-                                    if session_id:
-                                        await _save_transcription(
-                                            session_id=session_id,
-                                            model_id=model_name,
-                                            content="",  # Content already saved by send_results
-                                            moderation_label=label,
-                                            moderation_confidence=conf,
-                                            is_flagged=is_flagged,
-                                            detected_keywords=[]
-                                        )
-                                except Exception as send_err:
-                                    logger.warning(f"Failed to send moderation result: {send_err}")
-                                    ws_closed.set()
+                                # Save moderation to DB
+                                if session_id:
+                                    await _save_transcription(
+                                        session_id=session_id,
+                                        model_id=model_name,
+                                        content="",  # Content already saved by send_results
+                                        moderation_label=label,
+                                        moderation_confidence=confidence,
+                                        is_flagged=is_flagged,
+                                        detected_keywords=detected_keywords
+                                    )
+                            except Exception as send_err:
+                                logger.warning(f"Failed to send moderation result: {send_err}")
+                                ws_closed.set()
                         else:
                             await asyncio.sleep(0.05)
                             
@@ -496,7 +438,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         if receive_ended.is_set():
                             # Give extra time for pending moderation results
                             await asyncio.sleep(0.5)
-                            is_still_empty = await asyncio.to_thread(lambda: detector_output_q.empty())
+                            is_still_empty = await asyncio.to_thread(lambda: span_detector_output_q.empty())
                             if is_still_empty:
                                 break
                                 
@@ -508,107 +450,11 @@ async def websocket_endpoint(websocket: WebSocket):
             except Exception as e:
                 logger.error(f"Error in moderation results loop: {e}", exc_info=True)
 
-        async def send_span_detection_results():
-            """Process span detection results and update moderation responses."""
-            nonlocal span_detector_output_q, pending_span_requests
-            
-            if span_detector_output_q is None:
-                return
-                
-            try:
-                while True:
-                    if receive_ended.is_set() and ws_closed.is_set():
-                        break
-                        
-                    if not manager.moderation_enabled:
-                        await asyncio.sleep(0.1)
-                        if receive_ended.is_set():
-                            break
-                        continue
-                        
-                    try:
-                        is_empty = await asyncio.to_thread(lambda: span_detector_output_q.empty())
-                        if not is_empty:
-                            span_result = await asyncio.to_thread(span_detector_output_q.get_nowait)
-                            
-                            if ws_closed.is_set():
-                                logger.debug("WebSocket closed, discarding span result")
-                                continue
-                            
-                            request_id = span_result.get("request_id")
-                            detected_keywords = span_result.get("detected_keywords", [])
-                            spans = span_result.get("spans", [])
-                            
-                            # Find the pending moderation request
-                            if request_id in pending_span_requests:
-                                pending = pending_span_requests.pop(request_id)
-                                client_result = pending["moderation_result"]
-                                
-                                # Add detected keywords to the moderation result
-                                client_result["detected_keywords"] = detected_keywords
-                                client_result["spans"] = spans
-                                
-                                try:
-                                    await websocket.send_json(client_result)
-                                    label = client_result['label']
-                                    conf = client_result['confidence']
-                                    keywords_str = ", ".join(detected_keywords[:3])
-                                    if len(detected_keywords) > 3:
-                                        keywords_str += f"... (+{len(detected_keywords)-3})"
-                                    logger.info(f"Sent moderation with keywords: {label} ({conf:.1%}) ⚠️ FLAGGED [{keywords_str}]")
-                                    
-                                    # Save moderation with keywords to DB
-                                    if session_id:
-                                        await _save_transcription(
-                                            session_id=session_id,
-                                            model_id=model_name,
-                                            content="",  # Content already saved by send_results
-                                            moderation_label=label,
-                                            moderation_confidence=conf,
-                                            is_flagged=True,
-                                            detected_keywords=detected_keywords
-                                        )
-                                except Exception as send_err:
-                                    logger.warning(f"Failed to send moderation with keywords: {send_err}")
-                                    ws_closed.set()
-                            else:
-                                logger.warning(f"No pending moderation for span result: {request_id}")
-                        else:
-                            await asyncio.sleep(0.05)
-                            
-                        # Cleanup old pending requests (older than 30 seconds)
-                        current_time = asyncio.get_event_loop().time()
-                        expired = [k for k, v in pending_span_requests.items() 
-                                   if current_time - v["timestamp"] > 30]
-                        for k in expired:
-                            pending = pending_span_requests.pop(k)
-                            # Send moderation result without keywords
-                            try:
-                                await websocket.send_json(pending["moderation_result"])
-                            except Exception:
-                                pass
-                            
-                        if receive_ended.is_set():
-                            await asyncio.sleep(0.5)
-                            is_still_empty = await asyncio.to_thread(lambda: span_detector_output_q.empty())
-                            if is_still_empty and not pending_span_requests:
-                                break
-                                
-                    except Exception as e:
-                        if "Empty" not in str(type(e).__name__):
-                            logger.error(f"Error in send_span_detection_results: {e}")
-                        await asyncio.sleep(0.05)
-                        
-            except Exception as e:
-                logger.error(f"Error in span detection results loop: {e}", exc_info=True)
-
-        # Run tasks concurrently
+        # Run tasks concurrently (3 tasks instead of 4)
         receive_task = asyncio.create_task(receive_audio())
         send_task = asyncio.create_task(send_results())
-        # Always create moderation task if detector queues exist (for toggle support)
-        moderation_task = asyncio.create_task(send_moderation_results()) if detector_output_q else None
-        # Create span detection task if span detector queues exist
-        span_task = asyncio.create_task(send_span_detection_results()) if span_detector_output_q else None
+        # Create unified moderation task if span detector queues exist
+        moderation_task = asyncio.create_task(send_moderation_results()) if span_detector_output_q else None
         
         # Wait for receive to finish first (client disconnect or error)
         await receive_task
@@ -636,19 +482,6 @@ async def websocket_endpoint(websocket: WebSocket):
                 moderation_task.cancel()
                 try:
                     await moderation_task
-                except asyncio.CancelledError:
-                    pass
-        
-        # Wait for span detection task if it was created
-        if span_task:
-            try:
-                await asyncio.wait_for(span_task, timeout=5.0)
-                logger.info("span detection task completed successfully")
-            except asyncio.TimeoutError:
-                logger.warning("span detection task timed out, cancelling")
-                span_task.cancel()
-                try:
-                    await span_task
                 except asyncio.CancelledError:
                     pass
             
@@ -790,13 +623,14 @@ async def get_model_status():
 
 @router.get("/api/v1/moderation/status", response_model=ModerationStatus, summary="Get content moderation status")
 async def get_moderation_status():
-    """Get the current status of content moderation."""
+    """Get the current status of content moderation.
+    
+    Now uses unified span detector (ViSoBERT-HSD-Span) for moderation.
+    """
     return ModerationStatus(
         # Use moderation_requested for UI toggle state (user's intent)
-        # moderation_enabled would only be true if detector is also loaded
         enabled=manager.moderation_requested,
-        current_detector=manager.current_detector,
-        loading_detector=manager.loading_detector,
+        span_detector_active=manager.current_span_detector is not None,
         config=ModerationConfig(
             default_enabled=settings.ENABLE_CONTENT_MODERATION,
             confidence_threshold=settings.MODERATION_CONFIDENCE_THRESHOLD,
@@ -810,17 +644,19 @@ async def toggle_moderation(enabled: bool = True):
     """
     Enable or disable content moderation.
     
-    - When enabled: Starts the detector if not running, enables moderation
-    - When disabled: Keeps detector running but stops sending moderation results
+    - When enabled: Starts the span detector if not running, enables moderation
+    - When disabled: Keeps span detector running but stops sending moderation results
+    
+    Uses unified span detector (ViSoBERT-HSD-Span) for both span detection and label inference.
     """
     if enabled:
-        if not manager.current_detector:
+        if not manager.current_span_detector:
             try:
-                manager.start_detector("visobert-hsd")
+                manager.start_span_detector()
             except Exception as e:
                 raise HTTPException(
                     status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                    detail=f"Failed to start detector: {str(e)}"
+                    detail=f"Failed to start span detector: {str(e)}"
                 )
         manager.set_moderation_enabled(True)
     else:
@@ -829,5 +665,5 @@ async def toggle_moderation(enabled: bool = True):
     return ModerationToggleResponse(
         # Use moderation_requested for UI state
         enabled=manager.moderation_requested,
-        current_detector=manager.current_detector
+        span_detector_active=manager.current_span_detector is not None
     )

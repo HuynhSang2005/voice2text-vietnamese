@@ -30,12 +30,12 @@ class SwitchModelResponse(BaseModel):
 # ========== Content Moderation Schemas ==========
 
 class ContentModeration(BaseModel):
-    """Content moderation result from ViSoBERT-HSD detector.
+    """Content moderation result inferred from ViSoBERT-HSD-Span detector.
     
-    Labels:
-    - CLEAN (0): No harmful content detected
-    - OFFENSIVE (1): Offensive/vulgar language detected
-    - HATE (2): Hate speech detected
+    Labels are inferred from detected hate speech spans:
+    - CLEAN (0): No toxic spans detected
+    - OFFENSIVE (1): Mild offensive language detected (ngu, điên, vl, etc.)
+    - HATE (2): Severe hate speech detected (giết, hiếp, địt, etc.)
     """
     label: Literal["CLEAN", "OFFENSIVE", "HATE"]
     label_id: int = Field(ge=0, le=2, description="Label ID: 0=CLEAN, 1=OFFENSIVE, 2=HATE")
@@ -70,17 +70,23 @@ class ModerationConfig(BaseModel):
 
 
 class ModerationStatus(BaseModel):
-    """Current status of content moderation feature."""
+    """Current status of content moderation feature.
+    
+    Now uses unified span detector (ViSoBERT-HSD-Span) for both 
+    span detection and label inference.
+    """
     enabled: bool = Field(description="Whether content moderation is currently enabled")
-    current_detector: Optional[str] = Field(description="Name of the current detector model")
-    loading_detector: Optional[str] = Field(description="Name of detector being loaded (if any)")
+    span_detector_active: bool = Field(
+        default=False, 
+        description="Whether the span detector model is loaded and ready"
+    )
     config: ModerationConfig
 
 
 class ModerationToggleResponse(BaseModel):
     """Response for moderation toggle operation."""
     enabled: bool
-    current_detector: Optional[str]
+    span_detector_active: bool = Field(default=False)
 
 
 # ========== Transcription Schemas ==========

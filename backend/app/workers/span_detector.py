@@ -89,7 +89,7 @@ class SpanDetectorWorker(BaseWorker):
     # Used to infer moderation label (CLEAN/OFFENSIVE/HATE) from detected spans
     # =====================================================================
     
-    # Moderation label mapping (matching HateDetectorWorker format)
+    # Moderation label mapping (for unified label inference)
     MODERATION_LABEL_MAP = {
         0: "CLEAN",
         1: "OFFENSIVE",
@@ -264,7 +264,7 @@ class SpanDetectorWorker(BaseWorker):
         
         return {
             "request_id": request_id,
-            # Moderation classification (previously from HateDetectorWorker)
+            # Moderation classification (inferred from detected spans)
             "label": label,
             "label_id": label_id,
             "confidence": round(confidence, 4),
