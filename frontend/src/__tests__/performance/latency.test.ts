@@ -462,8 +462,8 @@ describe('Performance Benchmarks', () => {
       const heapGrowth = finalHeap - initialHeap
       
       // Should not grow significantly (allowing for some overhead)
-      // Skip assertion if memory API not available
-      if (process.memoryUsage) {
+      // Check using optional chaining since memory API might not be available
+      if (typeof process.memoryUsage === 'function') {
         expect(heapGrowth).toBeLessThan(10 * 1024 * 1024) // < 10MB
       }
     })

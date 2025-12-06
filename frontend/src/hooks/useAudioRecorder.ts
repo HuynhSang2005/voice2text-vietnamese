@@ -103,7 +103,10 @@ export function useAudioRecorder(options: UseAudioRecorderOptions = {}) {
     onStateChange,
     sampleRate = 16000,
     deviceId,
-    bufferSize = 4096,
+    // PERFORMANCE: Increased from 4096 to 8192 (~512ms at 16kHz)
+    // Reduces number of audio chunks sent, decreasing WebSocket overhead
+    // and React callback invocations by 50%
+    bufferSize = 8192,
   } = options
 
   const [state, setState] = useState<AudioRecorderState>({

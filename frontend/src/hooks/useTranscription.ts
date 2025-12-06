@@ -107,6 +107,7 @@ const DEFAULT_HEARTBEAT_INTERVAL = 30000 // 30 seconds
 const DEFAULT_MAX_QUEUE_SIZE = 50 // ~12.8 seconds of audio at 4096 samples/chunk
 const PING_TIMEOUT = 5000 // 5 seconds timeout for pong response
 const UNHEALTHY_THRESHOLD = 3 // Number of missed pings before unhealthy
+const STATS_UPDATE_INTERVAL = 2000 // Update bytesSent/queuedChunks state every 2s to reduce re-renders
 
 /**
  * Custom hook for WebSocket-based transcription
@@ -174,6 +175,9 @@ export function useTranscription(options: UseTranscriptionOptions) {
   
   // Bytes tracking
   const bytesSentRef = useRef<number>(0)
+  
+  // Throttle stats updates to reduce re-renders during audio streaming
+  const statsUpdateIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // Generate session ID - simple format: timestamp + random string
   const generateSessionId = useCallback(() => {
@@ -205,6 +209,29 @@ export function useTranscription(options: UseTranscriptionOptions) {
     })
   }, [onHealthChange])
 
+  /**
+   * Handle pong response - defined before useWebSocket for filter callback
+   */
+  const handlePong = useCallback((timestamp: number) => {
+    // Clear timeout
+    if (pingTimeoutRef.current) {
+      clearTimeout(pingTimeoutRef.current)
+      pingTimeoutRef.current = null
+    }
+    
+    // Calculate round-trip time
+    const latency = Date.now() - timestamp
+    missedPingsRef.current = 0
+    
+    setState((prev) => ({
+      ...prev,
+      lastPingLatency: latency,
+      connectionHealth: 'healthy',
+    }))
+    
+    updateConnectionHealth(0)
+  }, [updateConnectionHealth])
+
   // WebSocket connection
   const {
     sendJsonMessage,
@@ -214,6 +241,23 @@ export function useTranscription(options: UseTranscriptionOptions) {
   } = useWebSocket(
     shouldConnect ? wsUrl : null,
     {
+      // PERFORMANCE: Filter messages to prevent unnecessary re-renders
+      // Handle pong messages directly without updating lastMessage
+      filter: (message) => {
+        try {
+          const data = JSON.parse(message.data)
+          
+          // Handle pong response without triggering re-render
+          if (data.type === 'pong' && 'timestamp' in data) {
+            handlePong(data.timestamp)
+            return false // Don't update lastMessage
+          }
+          
+          return true // Pass through for transcription/moderation
+        } catch {
+          return true // Pass through non-JSON messages
+        }
+      },
       onOpen: () => {
         console.log('[WS] Connected to transcription server')
         configSentRef.current = false
@@ -295,29 +339,6 @@ export function useTranscription(options: UseTranscriptionOptions) {
       }
     }, PING_TIMEOUT)
   }, [readyState, sendJsonMessage, updateConnectionHealth, onError])
-
-  /**
-   * Handle pong response
-   */
-  const handlePong = useCallback((timestamp: number) => {
-    // Clear timeout
-    if (pingTimeoutRef.current) {
-      clearTimeout(pingTimeoutRef.current)
-      pingTimeoutRef.current = null
-    }
-    
-    // Calculate round-trip time
-    const latency = Date.now() - timestamp
-    missedPingsRef.current = 0
-    
-    setState((prev) => ({
-      ...prev,
-      lastPingLatency: latency,
-      connectionHealth: 'healthy',
-    }))
-    
-    updateConnectionHealth(0)
-  }, [updateConnectionHealth])
 
   /**
    * Process queued audio chunks
@@ -413,17 +434,12 @@ export function useTranscription(options: UseTranscriptionOptions) {
   }, [readyState, model, sampleRate, sendJsonMessage, generateSessionId, heartbeatInterval, sendPing])
 
   // Handle incoming messages
+  // NOTE: pong messages are filtered in useWebSocket filter callback for performance
   useEffect(() => {
     if (lastMessage === null) return
 
     try {
       const data = JSON.parse(lastMessage.data)
-      
-      // Handle pong response
-      if (data.type === 'pong' && 'timestamp' in data) {
-        handlePong(data.timestamp)
-        return
-      }
       
       // Handle moderation result
       if (data.type === 'moderation') {
@@ -490,8 +506,40 @@ export function useTranscription(options: UseTranscriptionOptions) {
       if (pingTimeoutRef.current) {
         clearTimeout(pingTimeoutRef.current)
       }
+      if (statsUpdateIntervalRef.current) {
+        clearInterval(statsUpdateIntervalRef.current)
+      }
     }
   }, [])
+
+  // Periodic stats update to reduce re-renders during audio streaming
+  // Instead of updating state on every sendAudio call, we sync refs to state periodically
+  useEffect(() => {
+    if (readyState === ReadyState.OPEN) {
+      // Start periodic stats sync
+      statsUpdateIntervalRef.current = setInterval(() => {
+        setState((prev) => {
+          // Only update if values actually changed
+          if (prev.bytesSent !== bytesSentRef.current || 
+              prev.queuedChunks !== audioQueueRef.current.length) {
+            return {
+              ...prev,
+              bytesSent: bytesSentRef.current,
+              queuedChunks: audioQueueRef.current.length,
+            }
+          }
+          return prev
+        })
+      }, STATS_UPDATE_INTERVAL)
+      
+      return () => {
+        if (statsUpdateIntervalRef.current) {
+          clearInterval(statsUpdateIntervalRef.current)
+          statsUpdateIntervalRef.current = null
+        }
+      }
+    }
+  }, [readyState])
 
   /**
    * Connect to WebSocket server
@@ -542,6 +590,9 @@ export function useTranscription(options: UseTranscriptionOptions) {
    * Send audio data (binary) over WebSocket
    * Implements backpressure handling with optional queuing
    * 
+   * PERFORMANCE: Does NOT trigger React re-renders on every chunk.
+   * Stats are updated via periodic interval (STATS_UPDATE_INTERVAL) instead.
+   * 
    * @param audioBuffer - PCM Int16 audio data as ArrayBuffer
    * @returns true if sent/queued successfully, false otherwise
    */
@@ -555,7 +606,7 @@ export function useTranscription(options: UseTranscriptionOptions) {
           audioQueueRef.current.shift() // Drop oldest
           console.warn('[WS] Audio queue overflow, dropping oldest chunk')
         }
-        setState((prev) => ({ ...prev, queuedChunks: audioQueueRef.current.length }))
+        // DON'T setState here - let periodic update handle it
         return true
       }
       console.warn('[WS] Cannot send audio: WebSocket not connected')
@@ -589,11 +640,8 @@ export function useTranscription(options: UseTranscriptionOptions) {
       (ws as WebSocket).send(audioBuffer)
       bytesSentRef.current += audioBuffer.byteLength
       
-      setState((prev) => ({ 
-        ...prev, 
-        bytesSent: bytesSentRef.current,
-        queuedChunks: audioQueueRef.current.length,
-      }))
+      // PERFORMANCE: Don't setState on every chunk - reduces re-renders dramatically
+      // Stats will be synced via periodic interval
       return true
     } catch (error) {
       console.error('[WS] Failed to send audio:', error)

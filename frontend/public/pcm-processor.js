@@ -44,7 +44,9 @@ class PCMProcessor extends AudioWorkletProcessor {
     this.resamplePosition = 0 // Fractional position in input stream
     
     // Audio level tracking
-    this.levelUpdateInterval = 128 // Update level every N samples (8ms at 16kHz)
+    // PERFORMANCE: Increased from 128 to 512 (~32ms at 16kHz)
+    // Reduces message port communication by 4x while still providing smooth VU meter
+    this.levelUpdateInterval = 512 // Update level every N samples (32ms at 16kHz)
     this.levelSampleCount = 0
     this.levelSum = 0
     

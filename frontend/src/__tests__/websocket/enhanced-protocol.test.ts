@@ -14,7 +14,6 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 // Constants
 // ==========================================
 
-const PING_TIMEOUT = 5000
 const UNHEALTHY_THRESHOLD = 3
 const DEFAULT_MAX_QUEUE_SIZE = 50
 

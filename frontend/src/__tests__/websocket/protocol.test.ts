@@ -36,14 +36,6 @@ interface ConfigMessage {
   language?: string
 }
 
-interface StartSessionMessage {
-  type: 'start_session'
-}
-
-interface FlushMessage {
-  type: 'flush'
-}
-
 interface TranscriptionResponse {
   type: 'transcription'
   text: string
@@ -51,11 +43,6 @@ interface TranscriptionResponse {
   start_time?: number
   end_time?: number
   confidence?: number
-}
-
-interface SessionStartedResponse {
-  type: 'session_started'
-  session_id: string
 }
 
 interface ErrorResponse {
@@ -78,7 +65,7 @@ class MockWebSocketServer {
   
   private setupDefaultHandlers(): void {
     // Handle config
-    this.messageHandlers.set(MessageTypes.CONFIG, (ws, data) => {
+    this.messageHandlers.set(MessageTypes.CONFIG, (_ws, data) => {
       const config = data as ConfigMessage
       // Validate and echo back acknowledgment
       if (config.model_id) {
@@ -193,7 +180,7 @@ class MockWebSocket {
     this.server.handleMessage(this, data)
   }
   
-  close(code?: number, reason?: string): void {
+  close(_code?: number, _reason?: string): void {
     this.server.disconnect(this)
   }
   
