@@ -281,3 +281,146 @@ class TestModelLoading:
             worker.load_model()
         
         assert "visobert-hsd-span" in str(exc_info.value).lower()
+
+
+class TestLabelInference:
+    """Test label inference from detected spans.
+    
+    The _infer_label() method replaces the separate ViSoBERT-HSD model by inferring
+    the moderation classification directly from detected toxic spans.
+    """
+    
+    @pytest.fixture
+    def worker(self):
+        """Create worker instance."""
+        input_q = MagicMock()
+        output_q = MagicMock()
+        return SpanDetectorWorker(input_q, output_q, "visobert-hsd-span")
+    
+    def test_empty_spans_returns_clean(self, worker):
+        """Test no spans returns CLEAN with 1.0 confidence."""
+        spans = []
+        label, label_id, confidence = worker._infer_label(spans)
+        
+        assert label == "CLEAN"
+        assert label_id == 0
+        assert confidence == 1.0
+    
+    def test_severe_hate_indicator_returns_hate(self, worker):
+        """Test severe indicators return HATE classification."""
+        # Test "giết" - violence indicator
+        spans = [{"text": "giết", "start": 0, "end": 4}]
+        label, label_id, confidence = worker._infer_label(spans)
+        
+        assert label == "HATE"
+        assert label_id == 2
+        assert confidence == 0.90
+    
+    def test_extreme_vulgar_returns_hate(self, worker):
+        """Test extreme vulgar words return HATE classification."""
+        # Test "địt" - extreme vulgar
+        spans = [{"text": "địt", "start": 0, "end": 3}]
+        label, label_id, confidence = worker._infer_label(spans)
+        
+        assert label == "HATE"
+        assert label_id == 2
+        assert confidence == 0.90
+    
+    def test_violence_without_diacritics_returns_hate(self, worker):
+        """Test violence words without diacritics (ASR output)."""
+        spans = [{"text": "giet", "start": 0, "end": 4}]
+        label, label_id, confidence = worker._infer_label(spans)
+        
+        assert label == "HATE"
+        assert label_id == 2
+        assert confidence == 0.90
+    
+    def test_slur_phrase_returns_hate(self, worker):
+        """Test slur phrases return HATE classification."""
+        spans = [{"text": "thằng chó", "start": 0, "end": 9}]
+        label, label_id, confidence = worker._infer_label(spans)
+        
+        assert label == "HATE"
+        assert label_id == 2
+        assert confidence == 0.90
+    
+    def test_mild_insult_returns_offensive(self, worker):
+        """Test mild insults return OFFENSIVE classification."""
+        # Test "ngu" - mild insult
+        spans = [{"text": "ngu", "start": 0, "end": 3}]
+        label, label_id, confidence = worker._infer_label(spans)
+        
+        assert label == "OFFENSIVE"
+        assert label_id == 1
+        assert confidence == 0.85
+    
+    def test_abbreviation_returns_offensive(self, worker):
+        """Test abbreviations return OFFENSIVE classification."""
+        spans = [{"text": "vcl", "start": 0, "end": 3}]
+        label, label_id, confidence = worker._infer_label(spans)
+        
+        assert label == "OFFENSIVE"
+        assert label_id == 1
+        assert confidence == 0.85
+    
+    def test_mild_vulgar_returns_offensive(self, worker):
+        """Test mild vulgar words return OFFENSIVE classification."""
+        spans = [{"text": "vãi", "start": 0, "end": 3}]
+        label, label_id, confidence = worker._infer_label(spans)
+        
+        assert label == "OFFENSIVE"
+        assert label_id == 1
+        assert confidence == 0.85
+    
+    def test_mild_insult_without_diacritics(self, worker):
+        """Test mild insults without diacritics (ASR output)."""
+        spans = [{"text": "dien", "start": 0, "end": 4}]  # điên without diacritics
+        label, label_id, confidence = worker._infer_label(spans)
+        
+        assert label == "OFFENSIVE"
+        assert label_id == 1
+        assert confidence == 0.85
+    
+    def test_unknown_span_defaults_to_offensive(self, worker):
+        """Test unknown spans default to OFFENSIVE with lower confidence."""
+        # Unknown word not in indicators
+        spans = [{"text": "xyz_unknown", "start": 0, "end": 11}]
+        label, label_id, confidence = worker._infer_label(spans)
+        
+        assert label == "OFFENSIVE"
+        assert label_id == 1
+        assert confidence == 0.80  # Lower confidence for unknown
+    
+    def test_mixed_severity_takes_highest(self, worker):
+        """Test mixed spans take highest severity (HATE > OFFENSIVE)."""
+        spans = [
+            {"text": "ngu", "start": 0, "end": 3},      # OFFENSIVE
+            {"text": "giết", "start": 10, "end": 14},   # HATE
+        ]
+        label, label_id, confidence = worker._infer_label(spans)
+        
+        # Should return HATE since it's more severe
+        assert label == "HATE"
+        assert label_id == 2
+    
+    def test_case_insensitive_matching(self, worker):
+        """Test matching is case-insensitive."""
+        spans = [{"text": "NGU", "start": 0, "end": 3}]
+        label, label_id, confidence = worker._infer_label(spans)
+        
+        assert label == "OFFENSIVE"
+        assert label_id == 1
+    
+    def test_partial_match_in_longer_span(self, worker):
+        """Test indicator within longer span text is matched."""
+        spans = [{"text": "thằng ngu này", "start": 0, "end": 13}]
+        label, label_id, confidence = worker._infer_label(spans)
+        
+        # "ngu" is in the span text
+        assert label_id > 0  # Not CLEAN
+    
+    def test_label_map_consistency(self, worker):
+        """Test MODERATION_LABEL_MAP is consistent."""
+        assert worker.MODERATION_LABEL_MAP[0] == "CLEAN"
+        assert worker.MODERATION_LABEL_MAP[1] == "OFFENSIVE"
+        assert worker.MODERATION_LABEL_MAP[2] == "HATE"

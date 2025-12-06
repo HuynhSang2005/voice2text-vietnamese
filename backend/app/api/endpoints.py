@@ -215,6 +215,48 @@ async def websocket_endpoint(websocket: WebSocket):
                                 if new_session_id:
                                     session_id = new_session_id
                                     logger.info(f"Starting new session: {session_id}")
+                                    
+                                    # Drain output queue to clear stale results from previous session
+                                    drained_count = 0
+                                    while True:
+                                        try:
+                                            output_q.get_nowait()
+                                            drained_count += 1
+                                        except Exception:
+                                            break
+                                    if drained_count > 0:
+                                        logger.info(f"Drained {drained_count} stale transcription results from previous session")
+                                    
+                                    # Also drain detector output queue if exists
+                                    if detector_output_q:
+                                        detector_drained = 0
+                                        while True:
+                                            try:
+                                                detector_output_q.get_nowait()
+                                                detector_drained += 1
+                                            except Exception:
+                                                break
+                                        if detector_drained > 0:
+                                            logger.info(f"Drained {detector_drained} stale moderation results")
+                                    
+                                    # Drain span detector output queue if exists
+                                    if span_detector_output_q:
+                                        span_drained = 0
+                                        while True:
+                                            try:
+                                                span_detector_output_q.get_nowait()
+                                                span_drained += 1
+                                            except Exception:
+                                                break
+                                        if span_drained > 0:
+                                            logger.info(f"Drained {span_drained} stale span detection results")
+                                    
+                                    # Clear pending span requests from previous session
+                                    if pending_span_requests:
+                                        logger.info(f"Cleared {len(pending_span_requests)} pending span requests")
+                                        pending_span_requests.clear()
+                                    
+                                    # Reset worker state (stream + last_text)
                                     await asyncio.to_thread(input_q.put, {"reset": True})
                                     
                             elif msg_type == "flush":

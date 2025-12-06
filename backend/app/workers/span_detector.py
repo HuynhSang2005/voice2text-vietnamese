@@ -84,6 +84,52 @@ class SpanDetectorWorker(BaseWorker):
         "dit", "du", "deo", "vai", "cac", "lon", "di", "diem",
     ]
     
+    # =====================================================================
+    # LABEL INFERENCE CONFIGURATION
+    # Used to infer moderation label (CLEAN/OFFENSIVE/HATE) from detected spans
+    # =====================================================================
+    
+    # Moderation label mapping (matching HateDetectorWorker format)
+    MODERATION_LABEL_MAP = {
+        0: "CLEAN",
+        1: "OFFENSIVE",
+        2: "HATE"
+    }
+    
+    # HATE indicators - severe/violent language that warrants HATE classification
+    # These words indicate severe toxicity, violence, or extreme hate speech
+    SEVERE_HATE_INDICATORS = [
+        # Violence-related (with diacritics)
+        "giết", "chết", "hiếp", "cưỡng", "đâm", "chém", "thiêu", "đốt",
+        # Violence-related (without diacritics for ASR)
+        "giet", "chet", "hiep", "cuong", "dam", "chem", "thieu", "dot",
+        # Extreme vulgar (with diacritics)
+        "địt", "đụ", "hiếp dâm", "cưỡng hiếp",
+        # Extreme vulgar (without diacritics)
+        "dit", "du", "hiep dam", "cuong hiep",
+        # Discriminatory terms
+        "súc sinh", "suc sinh", "súc vật", "suc vat",
+        # Slurs and extreme insults
+        "thằng chó", "con chó", "đồ chó",
+        "thang cho", "con cho", "do cho",
+    ]
+    
+    # OFFENSIVE indicators - mild/moderate toxicity
+    # These words are offensive but less severe than HATE
+    MILD_OFFENSIVE_INDICATORS = [
+        # Mild insults (with diacritics)
+        "ngu", "điên", "khùng", "đần", "ngốc", "hèn", "nát",
+        # Mild insults (without diacritics)
+        "dien", "khung", "dan", "ngoc", "hen", "nat",
+        # Abbreviations
+        "vl", "vcl", "đmm", "đkm", "clm",
+        "dmm", "dkm",
+        # Mild vulgar (with diacritics)
+        "vãi", "đéo", "cặc", "lồn",
+        # Mild vulgar (without diacritics)
+        "vai", "deo", "cac", "lon",
+    ]
+    
     def __init__(self, input_queue, output_queue, model_name: str = "visobert-hsd-span"):
         super().__init__(input_queue, output_queue, model_name)
         self.tokenizer = None
@@ -212,8 +258,18 @@ class SpanDetectorWorker(BaseWorker):
         # Extract unique keywords (preserve order of appearance)
         detected_keywords = list(dict.fromkeys([s["text"] for s in spans]))
         
+        # Infer moderation label from detected spans
+        # This replaces the separate ViSoBERT-HSD classification model
+        label, label_id, confidence = self._infer_label(spans)
+        
         return {
             "request_id": request_id,
+            # Moderation classification (previously from HateDetectorWorker)
+            "label": label,
+            "label_id": label_id,
+            "confidence": round(confidence, 4),
+            "is_flagged": label_id > 0,  # True for OFFENSIVE or HATE
+            # Span detection results
             "detected_keywords": detected_keywords,
             "spans": spans,
             "text_length": len(text)
@@ -465,3 +521,51 @@ class SpanDetectorWorker(BaseWorker):
         merged.sort(key=lambda x: x["start"])
         
         return merged
+
+    def _infer_label(self, spans: List[Dict[str, any]]) -> Tuple[str, int, float]:
+        """Infer moderation label from detected toxic spans.
+        
+        This method replaces the separate ViSoBERT-HSD model by inferring
+        the classification label directly from the detected spans.
+        
+        Classification Logic:
+            - No spans detected → CLEAN (0) with 1.0 confidence
+            - Spans contain severe/violent words → HATE (2) with 0.90 confidence
+            - Spans contain mild offensive words → OFFENSIVE (1) with 0.85 confidence
+            - Has spans but no matched indicators → OFFENSIVE (1) with 0.80 confidence
+        
+        Args:
+            spans: List of detected span dictionaries with 'text', 'start', 'end'
+            
+        Returns:
+            Tuple of (label_str, label_id, confidence)
+            - label_str: "CLEAN", "OFFENSIVE", or "HATE"
+            - label_id: 0, 1, or 2
+            - confidence: float between 0.0 and 1.0
+        """
+        # No spans = clean text
+        if not spans:
+            return ("CLEAN", 0, 1.0)
+        
+        # Collect all span texts (lowercase for matching)
+        span_texts = [s["text"].lower() for s in spans]
+        combined_text = " ".join(span_texts)
+        
+        # Check for severe HATE indicators first
+        for indicator in self.SEVERE_HATE_INDICATORS:
+            indicator_lower = indicator.lower()
+            # Check if indicator appears in any span text
+            for span_text in span_texts:
+                if indicator_lower in span_text or span_text in indicator_lower:
+                    return ("HATE", 2, 0.90)
+        
+        # Check for mild OFFENSIVE indicators
+        for indicator in self.MILD_OFFENSIVE_INDICATORS:
+            indicator_lower = indicator.lower()
+            for span_text in span_texts:
+                if indicator_lower in span_text or span_text in indicator_lower:
+                    return ("OFFENSIVE", 1, 0.85)
+        
+        # Has spans but no specific matched indicator
+        # Default to OFFENSIVE with lower confidence
+        return ("OFFENSIVE", 1, 0.80)
