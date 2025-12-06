@@ -184,6 +184,39 @@ class ModelManager:
         # Stop span detector
         self.stop_span_detector()
 
+    def preload_all_models(self) -> None:
+        """Pre-load all models on startup for faster first request.
+        
+        This eliminates cold-start latency by loading:
+        - Zipformer STT model
+        - ViSoBERT-HSD hate detector
+        - ViSoBERT-HSD-Span detector
+        """
+        logger.info("Pre-loading all models for faster startup...")
+        
+        # Load STT model
+        try:
+            self.start_model("zipformer")
+            logger.info("✓ Zipformer model pre-loaded")
+        except Exception as e:
+            logger.error(f"✗ Failed to pre-load Zipformer: {e}")
+        
+        # Load hate detector
+        try:
+            self.start_detector("visobert-hsd")
+            logger.info("✓ ViSoBERT-HSD detector pre-loaded")
+        except Exception as e:
+            logger.error(f"✗ Failed to pre-load ViSoBERT-HSD: {e}")
+        
+        # Load span detector
+        try:
+            self.start_span_detector("visobert-hsd-span")
+            logger.info("✓ ViSoBERT-HSD-Span detector pre-loaded")
+        except Exception as e:
+            logger.error(f"✗ Failed to pre-load ViSoBERT-HSD-Span: {e}")
+        
+        logger.info("All models pre-loaded successfully!")
+
     def get_queues(self, model_name: str) -> Tuple[Optional[multiprocessing.Queue], Optional[multiprocessing.Queue]]:
         """Get input and output queues for a model."""
         if model_name != self.current_model:

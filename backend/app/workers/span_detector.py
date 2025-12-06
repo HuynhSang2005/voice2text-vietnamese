@@ -35,6 +35,10 @@ class SpanDetectorWorker(BaseWorker):
         - O (0): Outside of toxic span
         - B-T (1): Beginning of toxic span
         - I-T (2): Inside of toxic span (continuation)
+        
+    Hybrid Detection:
+        Uses model predictions + rule-based fallback for common Vietnamese
+        offensive phrases that the model may miss.
     """
     
     # Label mapping for BIO scheme
@@ -49,6 +53,36 @@ class SpanDetectorWorker(BaseWorker):
     
     # Maximum sequence length (model trained with this constraint)
     MAX_SEQUENCE_LENGTH = 64
+    
+    # Fallback bad word/phrase patterns for hybrid detection
+    # These are common Vietnamese offensive phrases the model may miss
+    # Format: list of phrases (will match case-insensitively)
+    FALLBACK_BAD_PHRASES = [
+        # Two-word offensive phrases (with diacritics)
+        "thằng chó", "con chó", "đồ chó", "thằng ngu", "con ngu", "đồ ngu",
+        "thằng khốn", "con khốn", "đồ khốn", "thằng điên", "con điên", "đồ điên",
+        "thằng súc sinh", "con súc sinh", "đồ súc sinh",
+        "thằng đần", "con đần", "đồ đần", "thằng ngốc", "con ngốc", "đồ ngốc",
+        "thằng hèn", "con hèn", "đồ hèn", "thằng nát", "con nát", "đồ nát",
+        # Two-word offensive phrases (WITHOUT diacritics - for ASR output)
+        "thang cho", "con cho", "do cho", "thang ngu", "con ngu", "do ngu",
+        "thang khon", "con khon", "do khon", "thang dien", "con dien", "do dien",
+        "thang suc sinh", "con suc sinh", "do suc sinh",
+        "thang dan", "con dan", "do dan", "thang ngoc", "con ngoc", "do ngoc",
+        # Vulgar phrases (with diacritics)
+        "con cặc", "cái cặc", "đồ cặc", "thằng cặc",
+        "con đĩ", "đồ đĩ", "thằng đĩ",
+        "con lồn", "cái lồn", "đồ lồn",
+        # Vulgar phrases (WITHOUT diacritics)
+        "con cac", "cai cac", "do cac", "thang cac",
+        "con di", "do di", "thang di",
+        "con lon", "cai lon", "do lon",
+        # Single offensive words (with diacritics)
+        "địt", "đụ", "đéo", "vãi", "vl", "vcl", "đmm", "đkm", "clm",
+        "cặc", "lồn", "đĩ", "cave", "điếm",
+        # Single offensive words (WITHOUT diacritics)
+        "dit", "du", "deo", "vai", "cac", "lon", "di", "diem",
+    ]
     
     def __init__(self, input_queue, output_queue, model_name: str = "visobert-hsd-span"):
         super().__init__(input_queue, output_queue, model_name)
@@ -166,10 +200,16 @@ class SpanDetectorWorker(BaseWorker):
         # Get attention mask to identify valid tokens
         attention_mask = inputs["attention_mask"][0].tolist()
         
-        # Extract spans using BIO logic
-        spans = self._extract_spans(text, predictions, offset_mapping, attention_mask)
+        # Extract spans using BIO logic from model
+        model_spans = self._extract_spans(text, predictions, offset_mapping, attention_mask)
         
-        # Extract unique keywords
+        # Get fallback spans from rule-based detection
+        fallback_spans = self._fallback_detect_spans(text)
+        
+        # Merge model and fallback spans (model takes priority)
+        spans = self._merge_spans(model_spans, fallback_spans)
+        
+        # Extract unique keywords (preserve order of appearance)
         detected_keywords = list(dict.fromkeys([s["text"] for s in spans]))
         
         return {
@@ -266,4 +306,162 @@ class SpanDetectorWorker(BaseWorker):
                     "end": current_span_end
                 })
         
+        # Filter out likely false positives from model
+        spans = self._filter_model_spans(spans)
+        
         return spans
+
+    def _filter_model_spans(self, spans: List[Dict[str, any]]) -> List[Dict[str, any]]:
+        """Filter model spans to reduce false positives.
+        
+        The model sometimes marks common words as toxic. We filter by:
+        1. Checking if span text matches known offensive patterns
+        2. Checking if span text contains any known offensive word
+        
+        Args:
+            spans: Model-detected spans
+            
+        Returns:
+            Filtered list of spans
+        """
+        filtered = []
+        
+        # Create lowercase set of known bad words/phrases
+        known_bad = set(word.lower() for word in self.FALLBACK_BAD_PHRASES)
+        
+        for span in spans:
+            span_text_lower = span["text"].lower()
+            
+            # Keep if exact match with known bad phrase
+            if span_text_lower in known_bad:
+                filtered.append(span)
+                continue
+            
+            # Keep if any known bad word is contained in span
+            for bad_word in known_bad:
+                if bad_word in span_text_lower or span_text_lower in bad_word:
+                    filtered.append(span)
+                    break
+        
+        return filtered
+
+    def _fallback_detect_spans(self, text: str) -> List[Dict[str, any]]:
+        """Rule-based fallback detection for common Vietnamese bad words.
+        
+        This supplements the model which may miss some common phrases.
+        Uses case-insensitive matching with word boundaries.
+        
+        Args:
+            text: Original input text
+            
+        Returns:
+            List of span dictionaries with text, start, end
+        """
+        import re
+        
+        spans = []
+        text_lower = text.lower()
+        
+        # Sort by length (longest first) to match multi-word phrases first
+        sorted_words = sorted(self.FALLBACK_BAD_PHRASES, key=len, reverse=True)
+        
+        # Track which positions are already covered
+        covered_positions = set()
+        
+        for bad_word in sorted_words:
+            bad_word_lower = bad_word.lower()
+            
+            # Use word boundary matching where possible
+            # \b doesn't work well with Vietnamese, use lookahead/lookbehind for spaces
+            pattern = rf'(?:^|(?<=\s)){re.escape(bad_word_lower)}(?=\s|$)'
+            
+            for match in re.finditer(pattern, text_lower):
+                start = match.start()
+                end = match.end()
+                
+                # Check if this position is already covered
+                position_range = set(range(start, end))
+                if position_range & covered_positions:
+                    continue
+                
+                # Mark positions as covered
+                covered_positions.update(position_range)
+                
+                # Get original text (preserve case)
+                original_text = text[start:end]
+                
+                spans.append({
+                    "text": original_text,
+                    "start": start,
+                    "end": end
+                })
+        
+        # Sort by position
+        spans.sort(key=lambda x: x["start"])
+        
+        return spans
+
+    def _merge_spans(
+        self,
+        model_spans: List[Dict[str, any]],
+        fallback_spans: List[Dict[str, any]]
+    ) -> List[Dict[str, any]]:
+        """Merge model-detected spans with fallback spans intelligently.
+        
+        Strategy:
+        1. If a fallback span is LONGER and covers a model span, use fallback
+        2. If model span is longer or equal, keep model span
+        3. Non-overlapping spans are kept from both sources
+        
+        Args:
+            model_spans: Spans detected by the model
+            fallback_spans: Spans detected by rule-based fallback
+            
+        Returns:
+            Merged list of spans, sorted by position
+        """
+        if not fallback_spans:
+            return model_spans
+        if not model_spans:
+            return fallback_spans
+        
+        # Track which model spans to replace
+        model_spans_to_keep = list(model_spans)
+        fallback_spans_to_add = []
+        
+        for fb_span in fallback_spans:
+            fb_start, fb_end = fb_span["start"], fb_span["end"]
+            fb_range = set(range(fb_start, fb_end))
+            
+            # Check overlap with each model span
+            overlapping_model_spans = []
+            for i, m_span in enumerate(model_spans_to_keep):
+                m_start, m_end = m_span["start"], m_span["end"]
+                m_range = set(range(m_start, m_end))
+                
+                if fb_range & m_range:  # Has overlap
+                    overlapping_model_spans.append((i, m_span, len(m_range)))
+            
+            if not overlapping_model_spans:
+                # No overlap, add fallback span
+                fallback_spans_to_add.append(fb_span)
+            else:
+                # Check if fallback span is longer than all overlapping model spans
+                fb_len = len(fb_range)
+                all_model_shorter = all(fb_len > m_len for _, _, m_len in overlapping_model_spans)
+                
+                if all_model_shorter:
+                    # Fallback is longer, replace model spans with fallback
+                    # Remove overlapping model spans
+                    indices_to_remove = set(i for i, _, _ in overlapping_model_spans)
+                    model_spans_to_keep = [
+                        s for i, s in enumerate(model_spans_to_keep)
+                        if i not in indices_to_remove
+                    ]
+                    fallback_spans_to_add.append(fb_span)
+        
+        # Merge and sort
+        merged = model_spans_to_keep + fallback_spans_to_add
+        merged.sort(key=lambda x: x["start"])
+        
+        return merged

@@ -222,6 +222,14 @@ async def websocket_endpoint(websocket: WebSocket):
                                 logger.info("Received flush signal - forcing transcription of remaining buffer")
                                 await asyncio.to_thread(input_q.put, {"flush": True})
                                     
+                            elif msg_type == "ping":
+                                # Respond to heartbeat ping with pong
+                                timestamp = data.get("timestamp", 0)
+                                await websocket.send_json({
+                                    "type": "pong",
+                                    "timestamp": timestamp
+                                })
+                                    
                         except json.JSONDecodeError as e:
                             logger.warning(f"Invalid JSON message: {e}")
                             
@@ -648,17 +656,20 @@ async def _save_transcription(
             existing_log = (await session.exec(statement)).first()
             
             if existing_log:
-                if workflow_type == "streaming":
-                    # REPLACE: Streaming models send cumulative text
-                    existing_log.content = content
-                    logger.debug(f"Replaced transcription for session {session_id}: '{content[:30]}...'")
-                else:
-                    # APPEND: Buffered models send separate chunks
-                    if existing_log.content and content:
-                        existing_log.content = f"{existing_log.content} {content}"
-                    elif content:
+                # Only update content if provided (non-empty)
+                # This prevents moderation-only updates from overwriting content
+                if content:
+                    if workflow_type == "streaming":
+                        # REPLACE: Streaming models send cumulative text
                         existing_log.content = content
-                    logger.debug(f"Appended transcription to session {session_id}: '{content[:30]}...'")
+                        logger.debug(f"Replaced transcription for session {session_id}: '{content[:30]}...'")
+                    else:
+                        # APPEND: Buffered models send separate chunks
+                        if existing_log.content:
+                            existing_log.content = f"{existing_log.content} {content}"
+                        else:
+                            existing_log.content = content
+                        logger.debug(f"Appended transcription to session {session_id}: '{content[:30]}...'")
                     
                 # Keep max latency for the session
                 if latency_ms > existing_log.latency_ms:

@@ -21,7 +21,14 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info(f"Starting {settings.PROJECT_NAME}...")
     await create_db_and_tables()
-    logger.info("Application started successfully")
+    
+    # Pre-load all models for faster first request
+    # Run in thread to not block startup (models load in background)
+    import asyncio
+    loop = asyncio.get_event_loop()
+    loop.run_in_executor(None, manager.preload_all_models)
+    
+    logger.info("Application started successfully (models loading in background)")
     
     yield
     
