@@ -41,8 +41,7 @@ export function ModerationToggle({
   
   const { 
     isEnabled, 
-    currentDetector, 
-    loadingDetector,
+    isSpanDetectorActive, 
     isLoading, 
     isFetching,
   } = useModerationStatus()
@@ -65,22 +64,22 @@ export function ModerationToggle({
   }
 
   const isLoadingState = isLoading || isToggling || isFetching
-  const isDetectorLoading = !!loadingDetector
+  const isDetectorLoading = isEnabled && !isSpanDetectorActive
 
   // Tooltip content
   const tooltipContent = (
     <span>
       Kiểm duyệt nội dung (Content Moderation)
-      {currentDetector && (
+      {isSpanDetectorActive && (
         <>
           <br />
-          Model: {currentDetector}
+          Model: ViSoBERT-HSD-Span
         </>
       )}
       {isDetectorLoading && (
         <>
           <br />
-          Đang tải: {loadingDetector}
+          Đang tải model...
         </>
       )}
     </span>

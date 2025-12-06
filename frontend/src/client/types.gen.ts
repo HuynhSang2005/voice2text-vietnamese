@@ -92,6 +92,9 @@ export type ModerationConfig = {
  * ModerationStatus
  *
  * Current status of content moderation feature.
+ *
+ * Now uses unified span detector (ViSoBERT-HSD-Span) for both
+ * span detection and label inference.
  */
 export type ModerationStatus = {
   /**
@@ -101,17 +104,11 @@ export type ModerationStatus = {
    */
   enabled: boolean
   /**
-   * Current Detector
+   * Span Detector Active
    *
-   * Name of the current detector model
+   * Whether the span detector model is loaded and ready
    */
-  current_detector: string | null
-  /**
-   * Loading Detector
-   *
-   * Name of detector being loaded (if any)
-   */
-  loading_detector: string | null
+  span_detector_active?: boolean
   config: ModerationConfig
 }
 
@@ -126,9 +123,9 @@ export type ModerationToggleResponse = {
    */
   enabled: boolean
   /**
-   * Current Detector
+   * Span Detector Active
    */
-  current_detector: string | null
+  span_detector_active?: boolean
 }
 
 /**

@@ -359,6 +359,8 @@ export const getModerationStatusQueryKey = (
  * Get content moderation status
  *
  * Get the current status of content moderation.
+ *
+ * Now uses unified span detector (ViSoBERT-HSD-Span) for moderation.
  */
 export const getModerationStatusOptions = (
   options?: Options<GetModerationStatusData>,
@@ -386,8 +388,10 @@ export const getModerationStatusOptions = (
  *
  * Enable or disable content moderation.
  *
- * - When enabled: Starts the detector if not running, enables moderation
- * - When disabled: Keeps detector running but stops sending moderation results
+ * - When enabled: Starts the span detector if not running, enables moderation
+ * - When disabled: Keeps span detector running but stops sending moderation results
+ *
+ * Uses unified span detector (ViSoBERT-HSD-Span) for both span detection and label inference.
  */
 export const toggleModerationMutation = (
   options?: Partial<Options<ToggleModerationData>>,

@@ -20,9 +20,11 @@ export interface UseModerationStatusOptions {
 /**
  * Hook to get the current status of content moderation.
  * 
+ * Uses unified span detector (ViSoBERT-HSD-Span) for both span detection and label inference.
+ * 
  * @example
  * ```tsx
- * const { isEnabled, currentDetector, isLoading } = useModerationStatus()
+ * const { isEnabled, isSpanDetectorActive, isLoading } = useModerationStatus()
  * 
  * // With polling (useful when detector is loading)
  * const { isEnabled, isLoading, refetch } = useModerationStatus({
@@ -44,10 +46,8 @@ export function useModerationStatus(options: UseModerationStatusOptions = {}) {
     status: query.data,
     /** Whether content moderation is currently enabled */
     isEnabled: query.data?.enabled ?? false,
-    /** Name of the current detector model (e.g., 'visobert-hsd') */
-    currentDetector: query.data?.current_detector ?? null,
-    /** Name of detector being loaded (if any) */
-    loadingDetector: query.data?.loading_detector ?? null,
+    /** Whether the span detector model is loaded and ready */
+    isSpanDetectorActive: query.data?.span_detector_active ?? false,
     /** Moderation configuration */
     config: query.data?.config ?? null,
     /** Whether the query is loading */

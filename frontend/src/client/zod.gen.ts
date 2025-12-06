@@ -43,11 +43,13 @@ export const zModerationConfig = z.object({
  * ModerationStatus
  *
  * Current status of content moderation feature.
+ *
+ * Now uses unified span detector (ViSoBERT-HSD-Span) for both
+ * span detection and label inference.
  */
 export const zModerationStatus = z.object({
   enabled: z.boolean(),
-  current_detector: z.union([z.string(), z.null()]),
-  loading_detector: z.union([z.string(), z.null()]),
+  span_detector_active: z.optional(z.boolean()).default(false),
   config: zModerationConfig,
 })
 
@@ -58,7 +60,7 @@ export const zModerationStatus = z.object({
  */
 export const zModerationToggleResponse = z.object({
   enabled: z.boolean(),
-  current_detector: z.union([z.string(), z.null()]),
+  span_detector_active: z.optional(z.boolean()).default(false),
 })
 
 /**
