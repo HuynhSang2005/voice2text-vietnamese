@@ -6,6 +6,7 @@ from app.domain.exceptions.validation import (
     MultipleValidationException,
 )
 from app.domain.exceptions.business_rule import BusinessRuleViolationException
+from app.domain.exceptions.worker import WorkerException
 
 __all__ = [
     "DomainException",
@@ -13,4 +14,5 @@ __all__ = [
     "ValidationException",
     "MultipleValidationException",
     "BusinessRuleViolationException",
+    "WorkerException",
 ]
