@@ -2,11 +2,13 @@
 fastapi>=0.115.0
 uvicorn[standard]>=0.32.0
 pydantic-settings>=2.6.0
+dependency-injector>=4.41.0
 
 # Database
 sqlmodel>=0.0.22
 sqlalchemy[asyncio]>=2.0.0
 aiosqlite>=0.20.0
+alembic>=1.17.0  # Database migrations
 
 # AI Models - Zipformer STT
 sherpa-onnx>=1.10.0
