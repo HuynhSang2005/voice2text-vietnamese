@@ -1,4 +1,5 @@
 import logging
+from pathlib import Path
 from typing import List
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -8,14 +9,41 @@ class Settings(BaseSettings):
     
     # General
     PROJECT_NAME: str = "Real-time Vietnamese STT"
+    VERSION: str = "2.0.0"
+    DESCRIPTION: str = "Real-time Vietnamese Speech-to-Text with Content Moderation"
     API_V1_STR: str = "/api/v1"
+    ENVIRONMENT: str = "development"  # development, staging, production
     DEBUG: bool = False
+    
+    # Server
+    HOST: str = "0.0.0.0"
+    PORT: int = 8000
+    
+    @property
+    def API_BASE_URL(self) -> str:
+        """Get the base API URL."""
+        return f"http://{self.HOST}:{self.PORT}"
+    
+    # Documentation
+    ENABLE_DOCS: bool = True
     
     # CORS
     ALLOWED_ORIGINS: List[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
     
     # Model Storage
     MODEL_STORAGE_PATH: str = "models_storage"
+    
+    # Redis (for future caching)
+    REDIS_URL: str = "redis://localhost:6379/0"
+    
+    # Model Paths (as Path objects)
+    @property
+    def ZIPFORMER_MODEL_PATH(self) -> Path:
+        return Path(self.MODEL_STORAGE_PATH) / "zipformer" / "hynt-zipformer-30M-6000h"
+    
+    @property
+    def SPAN_DETECTOR_MODEL_PATH(self) -> Path:
+        return Path(self.MODEL_STORAGE_PATH) / "visobert-hsd-span" / "onnx"
     
     # Content Moderation (ViSoBERT-HSD)
     ENABLE_CONTENT_MODERATION: bool = True

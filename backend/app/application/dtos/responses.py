@@ -392,6 +392,59 @@ class HistoryResponse(BaseModel):
         }
 
 
+class ModelInfo(BaseModel):
+    """
+    Information about an available model.
+    
+    Attributes:
+        id: Model identifier
+        name: Display name
+        description: Model description
+        version: Model version
+        language: Target language code
+        sample_rate: Audio sample rate in Hz
+        is_available: Whether model is available for use
+        is_default: Whether this is the default model
+    
+    Example:
+        ```python
+        model = ModelInfo(
+            id="zipformer",
+            name="Zipformer 30M",
+            description="Real-time streaming ASR model",
+            version="1.0",
+            language="vi",
+            sample_rate=16000,
+            is_available=True,
+            is_default=True
+        )
+        ```
+    """
+    
+    id: str = Field(..., description="Model identifier")
+    name: str = Field(..., description="Display name")
+    description: str = Field(..., description="Model description")
+    version: str = Field(..., description="Model version")
+    language: str = Field(..., description="Target language code (e.g., 'vi' for Vietnamese)")
+    sample_rate: int = Field(..., description="Audio sample rate in Hz")
+    is_available: bool = Field(..., description="Whether model is available")
+    is_default: bool = Field(..., description="Whether this is the default model")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "id": "zipformer",
+                "name": "Zipformer 30M",
+                "description": "Real-time streaming ASR model trained on 6000h Vietnamese data",
+                "version": "1.0",
+                "language": "vi",
+                "sample_rate": 16000,
+                "is_available": True,
+                "is_default": True
+            }
+        }
+
+
 class ModelStatusResponse(BaseModel):
     """
     Current status of the model system.
@@ -493,6 +546,55 @@ class ModelSwitchResponse(BaseModel):
                 "message": "Model switched successfully",
                 "previous_model": "zipformer-small",
                 "new_model": "zipformer-large"
+            }
+        }
+
+
+class ModerationStatusResponse(BaseModel):
+    """
+    Moderation service status and statistics.
+    
+    Attributes:
+        enabled: Whether moderation is enabled
+        worker_ready: Whether moderation worker is ready
+        model_name: Name of the moderation model
+        total_checks: Total number of moderation checks performed
+        clean_count: Number of clean (non-offensive) results
+        offensive_count: Number of offensive results
+        average_confidence: Average confidence score across all checks
+    
+    Example:
+        ```python
+        status = ModerationStatusResponse(
+            enabled=True,
+            worker_ready=True,
+            model_name="ViSoBERT-HSD-Span",
+            total_checks=1523,
+            clean_count=1450,
+            offensive_count=73,
+            average_confidence=0.89
+        )
+        ```
+    """
+    
+    enabled: bool = Field(..., description="Whether moderation is enabled")
+    worker_ready: bool = Field(..., description="Whether moderation worker is ready")
+    model_name: str = Field(..., description="Name of the moderation model")
+    total_checks: int = Field(default=0, description="Total number of checks")
+    clean_count: int = Field(default=0, description="Number of clean results")
+    offensive_count: int = Field(default=0, description="Number of offensive results")
+    average_confidence: float = Field(default=0.0, description="Average confidence score")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "enabled": True,
+                "worker_ready": True,
+                "model_name": "ViSoBERT-HSD-Span",
+                "total_checks": 1523,
+                "clean_count": 1450,
+                "offensive_count": 73,
+                "average_confidence": 0.89
             }
         }
 

@@ -224,3 +224,13 @@ class Container(containers.DeclarativeContainer):
 
 # Global container instance
 container = Container()
+
+
+def get_container() -> Container:
+    """
+    Get the global DI container instance.
+    
+    Returns:
+        Container: The application DI container
+    """
+    return container
