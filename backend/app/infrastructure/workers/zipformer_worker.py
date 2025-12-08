@@ -5,7 +5,7 @@ Async wrapper for Sherpa-ONNX Zipformer Vietnamese STT model.
 Implements ITranscriptionWorker protocol using multiprocessing.
 """
 
-import asyncio
+
 import logging
 import numpy as np
 import os
@@ -197,7 +197,7 @@ class ZipformerWorker(BaseWorker):
 
                 try:
                     self.output_queue.put(result, timeout=self.queue_timeout)
-                except:
+                except Exception:
                     self.logger.warning("Output queue full, dropping result")
 
         # Handle flush: output final result and reset
@@ -217,7 +217,7 @@ class ZipformerWorker(BaseWorker):
                 try:
                     self.output_queue.put(result, timeout=self.queue_timeout)
                     self.logger.info(f"Flush output: '{formatted_text[:50]}...'")
-                except:
+                except Exception:
                     self.logger.warning("Output queue full, dropping flush result")
 
             # Reset for next session

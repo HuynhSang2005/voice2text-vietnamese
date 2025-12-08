@@ -2,7 +2,10 @@
 Model Management Routes
 
 Provides endpoints for managing STT models (list, switch, status).
+
+OpenAPI Tags: Models
 """
+
 import logging
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -23,6 +26,7 @@ from app.application.dtos.responses import (
     ModelSwitchResponse,
     ModelStatusResponse,
 )
+from app.api.openapi_examples import get_responses
 
 logger = logging.getLogger(__name__)
 
@@ -33,43 +37,86 @@ router = APIRouter(prefix="/api/v1/models", tags=["Models"])
     "",
     response_model=List[ModelInfo],
     status_code=status.HTTP_200_OK,
-    summary="List available models",
-    description="Get a list of all available speech-to-text models with their metadata",
+    summary="List available STT models",
+    description="""
+    Get a list of all available speech-to-text models with their metadata.
+
+    This endpoint returns information about:
+    - Model ID and display name
+    - Model description and version
+    - Supported language and sample rate
+    - Availability and default status
+
+    **Note**: Currently only Zipformer 30M model is available.
+    Future versions will support multiple models with hot-swapping capability.
+    """,
     responses={
+        **get_responses(500, 503),
         200: {
-            "description": "List of available models",
+            "description": "Successfully retrieved list of available models",
             "content": {
                 "application/json": {
-                    "example": [
-                        {
-                            "id": "zipformer",
-                            "name": "Zipformer 30M",
-                            "description": "Real-time streaming ASR optimized for Vietnamese (6000h trained)",
-                            "version": "1.0",
-                            "language": "vi",
-                            "sample_rate": 16000,
-                            "is_available": True,
-                            "is_default": True
-                        }
-                    ]
+                    "examples": {
+                        "single_model": {
+                            "summary": "Single model available (current)",
+                            "value": [
+                                {
+                                    "id": "zipformer",
+                                    "name": "Zipformer 30M",
+                                    "description": "Real-time streaming ASR optimized for Vietnamese (6000h trained)",
+                                    "version": "1.0",
+                                    "language": "vi",
+                                    "sample_rate": 16000,
+                                    "is_available": True,
+                                    "is_default": True,
+                                }
+                            ],
+                        },
+                        "multiple_models": {
+                            "summary": "Multiple models (future)",
+                            "value": [
+                                {
+                                    "id": "zipformer-30m",
+                                    "name": "Zipformer 30M",
+                                    "description": "Fast real-time streaming ASR (6000h trained)",
+                                    "version": "1.0",
+                                    "language": "vi",
+                                    "sample_rate": 16000,
+                                    "is_available": True,
+                                    "is_default": True,
+                                },
+                                {
+                                    "id": "zipformer-60m",
+                                    "name": "Zipformer 60M",
+                                    "description": "High-accuracy ASR (10000h trained)",
+                                    "version": "1.0",
+                                    "language": "vi",
+                                    "sample_rate": 16000,
+                                    "is_available": True,
+                                    "is_default": False,
+                                },
+                            ],
+                        },
+                    }
                 }
-            }
-        }
-    }
+            },
+        },
+    },
+    tags=["Models"],
 )
 async def list_models(
-    use_case: ListAvailableModelsUseCase = Depends(get_list_available_models_use_case)
+    use_case: ListAvailableModelsUseCase = Depends(get_list_available_models_use_case),
 ) -> List[ModelInfo]:
     """
     List all available speech-to-text models.
-    
+
     Returns:
         List[ModelInfo]: List of available models with metadata
-        
+
     Example:
         ```
         GET /api/v1/models
-        
+
         Response:
         [
             {
@@ -92,7 +139,7 @@ async def list_models(
         logger.error(f"Failed to list models: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to retrieve model list"
+            detail="Failed to retrieve model list",
         )
 
 
@@ -111,61 +158,57 @@ async def list_models(
                         "success": True,
                         "message": "Switched to model: zipformer",
                         "previous_model": "zipformer",
-                        "current_model": "zipformer"
+                        "current_model": "zipformer",
                     }
                 }
-            }
+            },
         },
         400: {
             "description": "Invalid model ID or model not available",
             "content": {
                 "application/json": {
-                    "example": {
-                        "detail": "Model 'invalid_model' is not available"
-                    }
+                    "example": {"detail": "Model 'invalid_model' is not available"}
                 }
-            }
+            },
         },
         503: {
             "description": "Model switch failed",
             "content": {
                 "application/json": {
-                    "example": {
-                        "detail": "Failed to initialize model"
-                    }
+                    "example": {"detail": "Failed to initialize model"}
                 }
-            }
-        }
-    }
+            },
+        },
+    },
 )
 async def switch_model(
     request: ModelSwitchRequest,
-    use_case: SwitchModelUseCase = Depends(get_switch_model_use_case)
+    use_case: SwitchModelUseCase = Depends(get_switch_model_use_case),
 ) -> ModelSwitchResponse:
     """
     Switch the active STT model.
-    
+
     Args:
         request: Model switch request with target model ID
-        
+
     Returns:
         ModelSwitchResponse: Switch result with previous and current model
-        
+
     Raises:
         HTTPException: 400 if model not available, 503 if switch fails
-        
+
     Note:
         Currently only one model (Zipformer) is available, so switching
         will return the same model. This endpoint is prepared for future
         multi-model support.
-        
+
     Example:
         ```
         POST /api/v1/models/switch
         {
             "model_id": "zipformer"
         }
-        
+
         Response:
         {
             "success": true,
@@ -180,15 +223,12 @@ async def switch_model(
         return response
     except ValueError as e:
         # Model not found or not available
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except Exception as e:
         logger.error(f"Model switch failed: {e}")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Failed to switch model: {str(e)}"
+            detail=f"Failed to switch model: {str(e)}",
         )
 
 
@@ -212,10 +252,10 @@ async def switch_model(
                         "successful_requests": 1520,
                         "failed_requests": 3,
                         "average_latency_ms": 245.3,
-                        "last_used": "2025-12-08T10:30:45Z"
+                        "last_used": "2025-12-08T10:30:45Z",
                     }
                 }
-            }
+            },
         },
         503: {
             "description": "Model not ready",
@@ -230,29 +270,29 @@ async def switch_model(
                         "successful_requests": 0,
                         "failed_requests": 0,
                         "average_latency_ms": 0.0,
-                        "last_used": None
+                        "last_used": None,
                     }
                 }
-            }
-        }
-    }
+            },
+        },
+    },
 )
 async def get_model_status(
-    use_case: GetModelStatusUseCase = Depends(get_get_model_status_use_case)
+    use_case: GetModelStatusUseCase = Depends(get_get_model_status_use_case),
 ) -> ModelStatusResponse:
     """
     Get current model status and performance metrics.
-    
+
     Returns:
         ModelStatusResponse: Current model status with metrics
-        
+
     Raises:
         HTTPException: 503 if model is not ready
-        
+
     Example:
         ```
         GET /api/v1/models/status
-        
+
         Response:
         {
             "model_id": "zipformer",
@@ -269,14 +309,14 @@ async def get_model_status(
     """
     try:
         status_response = await use_case.execute()
-        
+
         # Return 503 if model is not ready
         if not status_response.is_ready:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Model is not ready"
+                detail="Model is not ready",
             )
-        
+
         return status_response
     except HTTPException:
         raise
@@ -284,5 +324,5 @@ async def get_model_status(
         logger.error(f"Failed to get model status: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to retrieve model status"
+            detail="Failed to retrieve model status",
         )

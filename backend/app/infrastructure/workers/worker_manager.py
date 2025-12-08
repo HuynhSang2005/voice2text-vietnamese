@@ -12,7 +12,6 @@ from typing import Optional, Dict, Any
 from app.application.interfaces.workers import (
     ITranscriptionWorker,
     IModerationWorker,
-    IWorkerManager,
 )
 from app.domain.value_objects.model_config import ModelConfig
 from app.infrastructure.workers.zipformer_worker import ZipformerWorker
@@ -270,14 +269,14 @@ class WorkerManager:
         if self._stt_worker:
             try:
                 stt_ready = await self._stt_worker.is_ready()
-            except:
+            except Exception:
                 pass
 
         moderation_ready = False
         if self._moderation_worker:
             try:
                 moderation_ready = await self._moderation_worker.is_ready()
-            except:
+            except Exception:
                 pass
 
         return {

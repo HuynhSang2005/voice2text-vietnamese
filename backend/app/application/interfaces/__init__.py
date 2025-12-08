@@ -12,7 +12,7 @@ Usage:
         ITranscriptionWorker,
         ICache
     )
-    
+
     class TranscribeAudioUseCase:
         def __init__(
             self,

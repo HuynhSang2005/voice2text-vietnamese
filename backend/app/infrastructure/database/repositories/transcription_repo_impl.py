@@ -187,7 +187,7 @@ class TranscriptionRepositoryImpl(ITranscriptionRepository):
                 if is_offensive:
                     # Offensive: is_flagged=True OR label in (OFFENSIVE, HATE)
                     statement = statement.where(
-                        (TranscriptionModel.is_flagged == True)
+                        (TranscriptionModel.is_flagged.is_(True))
                         | (
                             TranscriptionModel.moderation_label.in_(
                                 ["OFFENSIVE", "HATE"]
@@ -198,7 +198,7 @@ class TranscriptionRepositoryImpl(ITranscriptionRepository):
                     # Clean: is_flagged=False OR NULL, and label=CLEAN or NULL
                     statement = statement.where(
                         (
-                            (TranscriptionModel.is_flagged == False)
+                            (TranscriptionModel.is_flagged.is_(False))
                             | (TranscriptionModel.is_flagged.is_(None))
                         )
                         & (
@@ -263,7 +263,7 @@ class TranscriptionRepositoryImpl(ITranscriptionRepository):
             if is_offensive is not None:
                 if is_offensive:
                     statement = statement.where(
-                        (TranscriptionModel.is_flagged == True)
+                        (TranscriptionModel.is_flagged.is_(True))
                         | (
                             TranscriptionModel.moderation_label.in_(
                                 ["OFFENSIVE", "HATE"]
@@ -273,7 +273,7 @@ class TranscriptionRepositoryImpl(ITranscriptionRepository):
                 else:
                     statement = statement.where(
                         (
-                            (TranscriptionModel.is_flagged == False)
+                            (TranscriptionModel.is_flagged.is_(False))
                             | (TranscriptionModel.is_flagged.is_(None))
                         )
                         & (

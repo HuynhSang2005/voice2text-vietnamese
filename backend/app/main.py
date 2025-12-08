@@ -116,7 +116,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
         logger.info("✅ Application started successfully")
         logger.info(f"📡 API available at: http://{settings.HOST}:{settings.PORT}")
-        logger.info(f"📚 Docs available at: http://{settings.HOST}:{settings.PORT}/docs")
+        logger.info(
+            f"📚 Docs available at: http://{settings.HOST}:{settings.PORT}/docs"
+        )
 
     except Exception as e:
         logger.error(f"❌ Startup failed: {e}", exc_info=True)
@@ -170,7 +172,14 @@ def create_application() -> FastAPI:
     # 2. Add structured logging middleware
     app.add_middleware(
         StructuredLoggingMiddleware,
-        exclude_paths=["/health", "/ready", "/metrics", "/docs", "/redoc", "/openapi.json"],
+        exclude_paths=[
+            "/health",
+            "/ready",
+            "/metrics",
+            "/docs",
+            "/redoc",
+            "/openapi.json",
+        ],
     )
 
     # 3. Configure error handlers (domain, validation, HTTP, generic)
@@ -230,7 +239,11 @@ def custom_openapi(app: FastAPI):
         {
             "url": f"http://{settings.HOST}:{settings.PORT}",
             "description": "Development server",
-        }
+        },
+        {
+            "url": "https://api.voice2text.example.com",
+            "description": "Production server (future)",
+        },
     ]
 
     # Add security schemes (placeholder for future auth)
@@ -239,9 +252,68 @@ def custom_openapi(app: FastAPI):
             "type": "apiKey",
             "in": "header",
             "name": "X-API-Key",
-            "description": "API key authentication (future feature)",
-        }
+            "description": "API key authentication (future implementation). Include your API key in the X-API-Key header.",
+        },
+        "BearerAuth": {
+            "type": "http",
+            "scheme": "bearer",
+            "bearerFormat": "JWT",
+            "description": "JWT bearer token authentication (future implementation). Include your JWT token in the Authorization header as 'Bearer <token>'.",
+        },
     }
+
+    # Add rate limiting information to OpenAPI schema
+    if "info" not in openapi_schema:
+        openapi_schema["info"] = {}
+
+    # Add rate limiting documentation in schema description
+    rate_limit_info = """
+
+## Rate Limiting
+
+This API implements rate limiting to ensure fair usage and service stability.
+
+### Rate Limit Headers
+
+All responses include the following rate limit headers:
+
+- `X-RateLimit-Limit`: Maximum requests allowed per time window
+- `X-RateLimit-Remaining`: Remaining requests in current window
+- `X-RateLimit-Reset`: Unix timestamp when the rate limit resets
+
+### Rate Limit Policies
+
+| Endpoint Type | Rate Limit | Window |
+|--------------|------------|--------|
+| Authentication | 10 requests | 1 minute |
+| Transcription (REST) | 60 requests | 1 minute |
+| Transcription (WebSocket) | 10 connections | 1 minute |
+| History & Models | 100 requests | 1 minute |
+| Health Checks | Unlimited | - |
+
+### Rate Limit Exceeded Response
+
+When rate limit is exceeded, the API returns a `429 Too Many Requests` response:
+
+```json
+{
+  "type": "https://api.voice2text.example.com/problems/rate-limit-exceeded",
+  "title": "Rate Limit Exceeded",
+  "status": 429,
+  "detail": "Too many requests. Please try again later.",
+  "instance": "/api/v1/transcribe",
+  "timestamp": "2024-12-08T12:00:00Z",
+  "request_id": "abc-123-def-456",
+  "retry_after": 60
+}
+```
+
+**Note**: Rate limiting is planned for future implementation. Current version does not enforce limits.
+"""
+
+    openapi_schema["info"]["description"] = (
+        openapi_schema["info"].get("description", "") + rate_limit_info
+    )
 
     # Cache schema
     app.openapi_schema = openapi_schema

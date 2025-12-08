@@ -17,18 +17,15 @@ import pickle
 import json
 import logging
 from typing import Optional, Any, List
-from datetime import timedelta
 
 import redis.asyncio as aioredis
 from redis.asyncio.connection import ConnectionPool
 from redis.exceptions import RedisError, ConnectionError as RedisConnectionError
 
 from app.application.interfaces.cache import (
-    ICache,
     CacheException,
     CacheConnectionError,
     CacheSerializationError,
-    CacheKeyError,
 )
 
 

@@ -5,7 +5,7 @@ Async wrapper for ViSoBERT-HSD-Span hate speech detection model.
 Implements IModerationWorker protocol using multiprocessing.
 """
 
-import asyncio
+
 import logging
 import os
 import time
@@ -204,8 +204,8 @@ class SpanDetectorWorker(BaseWorker):
             self.logger.info(f"Loading FP32 ONNX span detector from {model_path}")
         else:
             raise FileNotFoundError(
-                f"ViSoBERT-HSD-Span model not found. "
-                f"Please run 'python scripts/setup_hsd_span_model.py'"
+                "ViSoBERT-HSD-Span model not found. "
+                "Please run 'python scripts/setup_hsd_span_model.py'"
             )
 
         # Load tokenizer
@@ -252,7 +252,7 @@ class SpanDetectorWorker(BaseWorker):
             }
             try:
                 self.output_queue.put(result, timeout=self.queue_timeout)
-            except:
+            except Exception:
                 pass
             return
 
@@ -264,7 +264,7 @@ class SpanDetectorWorker(BaseWorker):
 
             try:
                 self.output_queue.put(result, timeout=self.queue_timeout)
-            except:
+            except Exception:
                 self.logger.warning("Output queue full, dropping result")
 
         except Exception as e:
@@ -281,7 +281,7 @@ class SpanDetectorWorker(BaseWorker):
             }
             try:
                 self.output_queue.put(error_result, timeout=self.queue_timeout)
-            except:
+            except Exception:
                 pass
 
     def _detect_spans(

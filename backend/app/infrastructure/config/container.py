@@ -1,7 +1,7 @@
 """Dependency injection container."""
 
 from dependency_injector import containers, providers
-from typing import Optional
+
 
 from app.infrastructure.config.settings import Settings
 
@@ -34,14 +34,6 @@ from app.application.services.audio_service import AudioService
 from app.application.services.session_service import SessionService
 
 # Application Layer - Interfaces (for type hints)
-from app.application.interfaces.workers import (
-    ITranscriptionWorker,
-    IModerationWorker,
-    IWorkerManager,
-)
-from app.application.interfaces.cache import ICache
-from app.domain.repositories.transcription_repository import ITranscriptionRepository
-from app.domain.repositories.session_repository import ISessionRepository
 
 # Infrastructure Layer - Implementations
 from app.infrastructure.database.connection import get_session
@@ -229,7 +221,7 @@ container = Container()
 def get_container() -> Container:
     """
     Get the global DI container instance.
-    
+
     Returns:
         Container: The application DI container
     """

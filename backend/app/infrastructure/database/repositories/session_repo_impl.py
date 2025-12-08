@@ -9,7 +9,7 @@ import logging
 from typing import Optional, List
 from datetime import datetime, timezone
 
-from sqlmodel import select, func, delete as sql_delete
+from sqlmodel import select, delete as sql_delete
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.domain.entities.session import Session
@@ -121,7 +121,7 @@ class SessionRepositoryImpl(ISessionRepository):
             now = datetime.now(timezone.utc)
 
             statement = select(SessionModel).where(
-                SessionModel.is_active == True, SessionModel.expires_at > now
+                SessionModel.is_active.is_(True), SessionModel.expires_at > now
             )
 
             # Apply optional filter

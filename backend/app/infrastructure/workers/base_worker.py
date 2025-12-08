@@ -123,7 +123,7 @@ class BaseWorker(ABC):
                             {"error": str(e), "model": self.model_name},
                             timeout=self.queue_timeout,
                         )
-                    except:
+                    except Exception:
                         pass  # Queue full or other error
 
         except Exception as e:
@@ -192,7 +192,7 @@ class BaseWorker(ABC):
 
             try:
                 self.input_queue.put("STOP", timeout=1.0)
-            except:
+            except Exception:
                 pass  # Queue full or closed
 
             # Wait for graceful shutdown
@@ -269,7 +269,7 @@ class BaseWorker(ABC):
                     drained_count += 1
                 except multiprocessing.queues.Empty:
                     break  # Queue empty
-                except:
+                except Exception:
                     break  # Queue closed or error
 
         except Exception as e:
