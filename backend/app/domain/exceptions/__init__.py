@@ -1,4 +1,5 @@
 """Domain exceptions - Business rule violations."""
+
 from app.domain.exceptions.base import DomainException
 from app.domain.exceptions.entity_not_found import EntityNotFoundException
 from app.domain.exceptions.validation import (
@@ -7,6 +8,13 @@ from app.domain.exceptions.validation import (
 )
 from app.domain.exceptions.business_rule import BusinessRuleViolationException
 from app.domain.exceptions.worker import WorkerException
+from app.domain.exceptions.repository import (
+    RepositoryError,
+    EntityNotFoundError,
+    DuplicateEntityError,
+    DatabaseConnectionError,
+    TransactionError,
+)
 
 __all__ = [
     "DomainException",
@@ -15,4 +23,9 @@ __all__ = [
     "MultipleValidationException",
     "BusinessRuleViolationException",
     "WorkerException",
+    "RepositoryError",
+    "EntityNotFoundError",
+    "DuplicateEntityError",
+    "DatabaseConnectionError",
+    "TransactionError",
 ]

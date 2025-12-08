@@ -10,6 +10,9 @@ sqlalchemy[asyncio]>=2.0.0
 aiosqlite>=0.20.0
 alembic>=1.17.0  # Database migrations
 
+# Cache
+redis[asyncio]>=5.0.0  # Async Redis client with connection pooling
+
 # AI Models - Zipformer STT
 sherpa-onnx>=1.10.0
 

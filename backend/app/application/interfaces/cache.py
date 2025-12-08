@@ -13,6 +13,27 @@ from typing import Protocol, Optional, Any
 from datetime import timedelta
 
 
+# Cache Exceptions
+class CacheException(Exception):
+    """Base exception for cache-related errors."""
+    pass
+
+
+class CacheConnectionError(CacheException):
+    """Exception raised when cache connection fails."""
+    pass
+
+
+class CacheSerializationError(CacheException):
+    """Exception raised when serialization/deserialization fails."""
+    pass
+
+
+class CacheKeyError(CacheException):
+    """Exception raised when key operations fail."""
+    pass
+
+
 class ICache(Protocol):
     """
     Interface for caching operations.

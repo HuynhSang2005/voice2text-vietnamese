@@ -1,4 +1,5 @@
 """Entity not found exception."""
+
 from typing import Optional
 
 from app.domain.exceptions.base import DomainException
@@ -7,11 +8,11 @@ from app.domain.exceptions.base import DomainException
 class EntityNotFoundException(DomainException):
     """
     Exception raised when an entity cannot be found in storage.
-    
+
     Typically raised by repository implementations when a query
     for a specific entity by ID returns no results.
     """
-    
+
     def __init__(
         self,
         entity_type: str,
@@ -20,7 +21,7 @@ class EntityNotFoundException(DomainException):
     ):
         """
         Initialize entity not found exception.
-        
+
         Args:
             entity_type: Type/name of entity (e.g., "Transcription", "Session")
             entity_id: Identifier of the missing entity

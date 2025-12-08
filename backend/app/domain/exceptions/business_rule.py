@@ -1,4 +1,5 @@
 """Business rule violation exception."""
+
 from typing import Optional
 
 from app.domain.exceptions.base import DomainException
@@ -7,12 +8,12 @@ from app.domain.exceptions.base import DomainException
 class BusinessRuleViolationException(DomainException):
     """
     Exception raised when a business rule is violated.
-    
+
     Indicates that an operation cannot proceed because it would
     violate domain business logic (e.g., extending an expired session,
     processing audio with zero duration).
     """
-    
+
     def __init__(
         self,
         rule: str,
@@ -21,7 +22,7 @@ class BusinessRuleViolationException(DomainException):
     ):
         """
         Initialize business rule violation exception.
-        
+
         Args:
             rule: Name or description of the business rule
             reason: Explanation of why the rule was violated
